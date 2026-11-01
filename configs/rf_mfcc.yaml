@@ -1,0 +1,40 @@
+# MFCC (mean + std) + Random Forest, per sifat. Tanpa augmentasi (ablasi augmentasi menyusul).
+name: rf_mfcc
+seed: 42
+n_jobs: 8
+
+preprocess:            # sama untuk semua model
+  sr: 16000
+  trim_top_db: 40.0
+  frame_ms: 25.0
+  hop_ms: 10.0
+  margin_ms: 50.0
+  peak: 0.95
+target_seconds: 1.9    # p99 durasi setelah trim di data latih = 1,870 s (reports/data_audit.md)
+
+features:
+  type: mfcc
+  n_mfcc: 13
+  n_fft: 512
+  win_ms: 25.0
+  hop_ms: 10.0
+  n_mels: 40
+  fmin: 20.0
+  fmax: 8000.0
+  delta_width: 9
+  min_seconds: 0.1
+
+model:
+  type: rf
+  fixed:
+    n_estimators: 500
+  grid:
+    max_depth: [null, 20]
+    min_samples_leaf: [1, 5]
+    max_features: [sqrt, 0.3]
+
+augmentation: none
+
+smoke:
+  fraction: 0.1
+  max_grid: 1

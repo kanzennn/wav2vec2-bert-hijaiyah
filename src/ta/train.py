@@ -59,7 +59,8 @@ def result_rows(task, cfg, mode, fold, metrics_by_subset, run_id):
 def run_task(task, cfg, index, X, run_dir, smoke, run_id):
     kind, seed, n_jobs = cfg["model"]["type"], cfg["seed"], cfg.get("n_jobs", 4)
     y = get_labels(task, index)
-    grid = expand_grid(cfg["model"]["grid"])
+    fixed = cfg["model"].get("fixed", {})
+    grid = [{**fixed, **g} for g in expand_grid(cfg["model"]["grid"])]
     if smoke:
         grid = grid[: cfg.get("smoke", {}).get("max_grid", 1)]
     folds = list(cv_folds(index))
