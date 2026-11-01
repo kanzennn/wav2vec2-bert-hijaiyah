@@ -1,0 +1,6 @@
+source_id,grup_cv,split,fold,item,sub,rep,md5,reason,decided_by,date
+benar/11/21t-3-1.wav,benar-11,latih,3,21t,3,1,ce66fdfe1f525cc37798810cb3092206,"identical content (md5) also present in test split (benar-12, benar-13); removed from training to prevent train-test leakage",user,2026-11-01
+benar/11/21t-3-2.wav,benar-11,latih,3,21t,3,2,ce66fdfe1f525cc37798810cb3092206,"identical content (md5) also present in test split (benar-12, benar-13); removed from training to prevent train-test leakage",user,2026-11-01
+benar/11/21t-3-3.wav,benar-11,latih,3,21t,3,3,ce66fdfe1f525cc37798810cb3092206,"identical content (md5) also present in test split (benar-12, benar-13); removed from training to prevent train-test leakage",user,2026-11-01
+benar/11/21t-3-4.wav,benar-11,latih,3,21t,3,4,ce66fdfe1f525cc37798810cb3092206,"identical content (md5) also present in test split (benar-12, benar-13); removed from training to prevent train-test leakage",user,2026-11-01
+benar/11/21t-3-5.wav,benar-11,latih,3,21t,3,5,ce66fdfe1f525cc37798810cb3092206,"identical content (md5) also present in test split (benar-12, benar-13); removed from training to prevent train-test leakage",user,2026-11-01

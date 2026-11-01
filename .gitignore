@@ -1,0 +1,17 @@
+# data mentah dan hasil ekstraksi (jangan di-commit)
+data/raw/
+data/raw_extract/
+data/interim/
+*.zip
+
+# checkpoint dan cache
+*.pt
+*.ckpt
+runs/**/checkpoints/
+__pycache__/
+.venv/
+
+# run smoke tidak perlu di-commit
+runs/*_smoke/
+*.egg-info/
+.pytest_cache/
