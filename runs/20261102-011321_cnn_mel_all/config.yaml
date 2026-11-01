@@ -1,0 +1,44 @@
+# CNN 4 blok conv-BN-ReLU-pool, rata-rata frekuensi + rata-rata waktu bermasker. Per sifat, 3 seed. Tanpa augmentasi (ablasi augmentasi menyusul).
+# Hiperparameter = rencana awal (belum di-tuning); jumlah epoch akhir dipilih dari early stopping di CV.
+name: cnn_mel
+seed: 42               # dipakai untuk subset --smoke
+seeds: [42, 43, 44]
+n_jobs: 8
+
+preprocess:            # sama untuk semua model
+  sr: 16000
+  trim_top_db: 40.0
+  frame_ms: 25.0
+  hop_ms: 10.0
+  margin_ms: 50.0
+  peak: 0.95
+target_seconds: 1.9    # p99 durasi setelah trim di data latih = 1,870 s (reports/data_audit.md)
+
+features:
+  type: mel
+  n_mels: 64
+  n_fft: 512
+  win_ms: 25.0
+  hop_ms: 10.0
+  fmin: 20.0
+  fmax: 8000.0
+
+model:
+  type: cnn
+  params:
+    channels: [32, 64, 128, 128]   # tiap blok conv3x3-BN-ReLU-maxpool 2x2
+    dropout: 0.3
+
+train:
+  batch_size: 64
+  lr: 0.001
+  weight_decay: 0.0001
+  max_epochs: 40
+  patience: 8          # early stopping di macro-F1 fold validasi
+  amp: true
+
+augmentation: none
+
+smoke:
+  fraction: 0.1
+  max_epochs: 2

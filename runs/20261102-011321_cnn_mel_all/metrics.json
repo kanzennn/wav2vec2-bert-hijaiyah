@@ -1,0 +1,803 @@
+{
+  "run_id": "20261102-011321_cnn_mel_all",
+  "config": {
+    "name": "cnn_mel",
+    "seed": 42,
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "n_jobs": 8,
+    "preprocess": {
+      "sr": 16000,
+      "trim_top_db": 40.0,
+      "frame_ms": 25.0,
+      "hop_ms": 10.0,
+      "margin_ms": 50.0,
+      "peak": 0.95
+    },
+    "target_seconds": 1.9,
+    "features": {
+      "type": "mel",
+      "n_mels": 64,
+      "n_fft": 512,
+      "win_ms": 25.0,
+      "hop_ms": 10.0,
+      "fmin": 20.0,
+      "fmax": 8000.0
+    },
+    "model": {
+      "type": "cnn",
+      "params": {
+        "channels": [
+          32,
+          64,
+          128,
+          128
+        ],
+        "dropout": 0.3
+      }
+    },
+    "train": {
+      "batch_size": 64,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "max_epochs": 40,
+      "patience": 8,
+      "amp": true
+    },
+    "augmentation": "none",
+    "smoke": {
+      "fraction": 0.1,
+      "max_epochs": 2
+    }
+  },
+  "git": {
+    "commit": "ea8df553f7af84eb5e612d6f7f0b6d14936d6f21",
+    "dirty": false
+  },
+  "smoke": false,
+  "n_recordings": 21586,
+  "feature_names": [
+    "mel0",
+    "mel1",
+    "mel2",
+    "mel3",
+    "mel4",
+    "mel5",
+    "mel6",
+    "mel7",
+    "mel8",
+    "mel9",
+    "mel10",
+    "mel11",
+    "mel12",
+    "mel13",
+    "mel14",
+    "mel15",
+    "mel16",
+    "mel17",
+    "mel18",
+    "mel19",
+    "mel20",
+    "mel21",
+    "mel22",
+    "mel23",
+    "mel24",
+    "mel25",
+    "mel26",
+    "mel27",
+    "mel28",
+    "mel29",
+    "mel30",
+    "mel31",
+    "mel32",
+    "mel33",
+    "mel34",
+    "mel35",
+    "mel36",
+    "mel37",
+    "mel38",
+    "mel39",
+    "mel40",
+    "mel41",
+    "mel42",
+    "mel43",
+    "mel44",
+    "mel45",
+    "mel46",
+    "mel47",
+    "mel48",
+    "mel49",
+    "mel50",
+    "mel51",
+    "mel52",
+    "mel53",
+    "mel54",
+    "mel55",
+    "mel56",
+    "mel57",
+    "mel58",
+    "mel59",
+    "mel60",
+    "mel61",
+    "mel62",
+    "mel63"
+  ],
+  "device": "cuda",
+  "summaries": [
+    {
+      "task": "S1",
+      "train": {
+        "batch_size": 64,
+        "lr": 0.001,
+        "weight_decay": 0.0001,
+        "max_epochs": 40,
+        "patience": 8,
+        "amp": true,
+        "eval_batch": 512
+      },
+      "seeds": [
+        {
+          "seed": 42,
+          "cv_best_epochs": [
+            10,
+            13,
+            17,
+            10,
+            14
+          ],
+          "final_epochs": 13,
+          "cv_macro_f1_mean": 0.6975676,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.667363,
+              "macro_f1": 0.653743,
+              "precision": 0.62014,
+              "recall": 0.86509,
+              "f1": 0.722416,
+              "auc": 0.738257
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.53603,
+              "macro_f1": 0.532105,
+              "precision": 0.352248,
+              "recall": 0.80067,
+              "f1": 0.489253,
+              "auc": 0.659085
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.798148,
+              "macro_f1": 0.735379,
+              "precision": 0.840194,
+              "recall": 0.889744,
+              "f1": 0.864259,
+              "auc": 0.831978
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.587103,
+              "macro_f1": 0.586452,
+              "precision": 0.581075,
+              "recall": 0.626333,
+              "f1": 0.602856,
+              "auc": 0.614953
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.48768,
+              "macro_f1": 0.446456,
+              "precision": 0.238883,
+              "recall": 0.386935,
+              "f1": 0.295396,
+              "auc": 0.438498
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.686111,
+              "macro_f1": 0.642027,
+              "precision": 0.824742,
+              "recall": 0.717949,
+              "f1": 0.767649,
+              "auc": 0.717652
+            }
+          }
+        },
+        {
+          "seed": 43,
+          "cv_best_epochs": [
+            17,
+            13,
+            11,
+            11,
+            9
+          ],
+          "final_epochs": 11,
+          "cv_macro_f1_mean": 0.7045011999999999,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.678033,
+              "macro_f1": 0.677925,
+              "precision": 0.67219,
+              "recall": 0.695874,
+              "f1": 0.683827,
+              "auc": 0.751356
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.665272,
+              "macro_f1": 0.626753,
+              "precision": 0.428737,
+              "recall": 0.619765,
+              "f1": 0.506849,
+              "auc": 0.71087
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.690741,
+              "macro_f1": 0.645719,
+              "precision": 0.825547,
+              "recall": 0.725,
+              "f1": 0.772014,
+              "auc": 0.747498
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.559499,
+              "macro_f1": 0.545138,
+              "precision": 0.544178,
+              "recall": 0.736671,
+              "f1": 0.62596,
+              "auc": 0.585329
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.426313,
+              "macro_f1": 0.422222,
+              "precision": 0.268026,
+              "recall": 0.616415,
+              "f1": 0.373604,
+              "auc": 0.486014
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.69213,
+              "macro_f1": 0.61887,
+              "precision": 0.78927,
+              "recall": 0.782692,
+              "f1": 0.785967,
+              "auc": 0.664137
+            }
+          }
+        },
+        {
+          "seed": 44,
+          "cv_best_epochs": [
+            20,
+            8,
+            12,
+            9,
+            14
+          ],
+          "final_epochs": 12,
+          "cv_macro_f1_mean": 0.7186978,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.665043,
+              "macro_f1": 0.662598,
+              "precision": 0.641412,
+              "recall": 0.749652,
+              "f1": 0.691321,
+              "auc": 0.733815
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.60251,
+              "macro_f1": 0.580941,
+              "precision": 0.378987,
+              "recall": 0.676717,
+              "f1": 0.485869,
+              "auc": 0.661892
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.727315,
+              "macro_f1": 0.676651,
+              "precision": 0.833677,
+              "recall": 0.777564,
+              "f1": 0.804643,
+              "auc": 0.784499
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.578288,
+              "macro_f1": 0.577177,
+              "precision": 0.587688,
+              "recall": 0.526657,
+              "f1": 0.555501,
+              "auc": 0.618606
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.591818,
+              "macro_f1": 0.542692,
+              "precision": 0.334511,
+              "recall": 0.475712,
+              "f1": 0.392808,
+              "auc": 0.586716
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.564815,
+              "macro_f1": 0.541809,
+              "precision": 0.785978,
+              "recall": 0.546154,
+              "f1": 0.644478,
+              "auc": 0.627226
+            }
+          }
+        }
+      ]
+    },
+    {
+      "task": "S3",
+      "train": {
+        "batch_size": 64,
+        "lr": 0.001,
+        "weight_decay": 0.0001,
+        "max_epochs": 40,
+        "patience": 8,
+        "amp": true,
+        "eval_batch": 512
+      },
+      "seeds": [
+        {
+          "seed": 42,
+          "cv_best_epochs": [
+            14,
+            5,
+            18,
+            12,
+            13
+          ],
+          "final_epochs": 13,
+          "cv_macro_f1_mean": 0.6795924,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.639991,
+              "macro_f1": 0.603795,
+              "precision": 0.588014,
+              "recall": 0.940278,
+              "f1": 0.723548,
+              "auc": 0.747618
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.538354,
+              "macro_f1": 0.535913,
+              "precision": 0.34433,
+              "recall": 0.927778,
+              "f1": 0.502256,
+              "auc": 0.821388
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.741204,
+              "macro_f1": 0.524053,
+              "precision": 0.765383,
+              "recall": 0.944444,
+              "f1": 0.845537,
+              "auc": 0.637931
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.603572,
+              "macro_f1": 0.599322,
+              "precision": 0.586898,
+              "recall": 0.705093,
+              "f1": 0.640589,
+              "auc": 0.640478
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.625291,
+              "macro_f1": 0.60487,
+              "precision": 0.381462,
+              "recall": 0.792593,
+              "f1": 0.515042,
+              "auc": 0.761398
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.581944,
+              "macro_f1": 0.486055,
+              "precision": 0.743381,
+              "recall": 0.675926,
+              "f1": 0.70805,
+              "auc": 0.464492
+            }
+          }
+        },
+        {
+          "seed": 43,
+          "cv_best_epochs": [
+            18,
+            21,
+            15,
+            20,
+            28
+          ],
+          "final_epochs": 20,
+          "cv_macro_f1_mean": 0.6821632,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.626537,
+              "macro_f1": 0.586924,
+              "precision": 0.578887,
+              "recall": 0.934259,
+              "f1": 0.714842,
+              "auc": 0.723262
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.525802,
+              "macro_f1": 0.524626,
+              "precision": 0.340426,
+              "recall": 0.948148,
+              "f1": 0.500978,
+              "auc": 0.793168
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.726852,
+              "macro_f1": 0.507238,
+              "precision": 0.759839,
+              "recall": 0.92963,
+              "f1": 0.836202,
+              "auc": 0.604746
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.60218,
+              "macro_f1": 0.594376,
+              "precision": 0.580939,
+              "recall": 0.739352,
+              "f1": 0.650642,
+              "auc": 0.632404
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.569038,
+              "macro_f1": 0.550573,
+              "precision": 0.335319,
+              "recall": 0.72963,
+              "f1": 0.459475,
+              "auc": 0.666478
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.635185,
+              "macro_f1": 0.526733,
+              "precision": 0.764295,
+              "recall": 0.742593,
+              "f1": 0.753287,
+              "auc": 0.539436
+            }
+          }
+        },
+        {
+          "seed": 44,
+          "cv_best_epochs": [
+            11,
+            17,
+            10,
+            12,
+            13
+          ],
+          "final_epochs": 12,
+          "cv_macro_f1_mean": 0.6738997999999999,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.644166,
+              "macro_f1": 0.625314,
+              "precision": 0.764358,
+              "recall": 0.418981,
+              "f1": 0.541268,
+              "auc": 0.760969
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.8159,
+              "macro_f1": 0.730468,
+              "precision": 0.68,
+              "recall": 0.503704,
+              "f1": 0.578723,
+              "auc": 0.801638
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.473148,
+              "macro_f1": 0.466338,
+              "precision": 0.807398,
+              "recall": 0.390741,
+              "f1": 0.526622,
+              "auc": 0.576436
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.582927,
+              "macro_f1": 0.581273,
+              "precision": 0.596277,
+              "recall": 0.518981,
+              "f1": 0.55495,
+              "auc": 0.628197
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.681543,
+              "macro_f1": 0.625516,
+              "precision": 0.406932,
+              "recall": 0.587037,
+              "f1": 0.480667,
+              "auc": 0.713269
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.484722,
+              "macro_f1": 0.44745,
+              "precision": 0.730245,
+              "recall": 0.496296,
+              "f1": 0.590959,
+              "auc": 0.450434
+            }
+          }
+        }
+      ]
+    },
+    {
+      "task": "T2",
+      "train": {
+        "batch_size": 64,
+        "lr": 0.001,
+        "weight_decay": 0.0001,
+        "max_epochs": 40,
+        "patience": 8,
+        "amp": true,
+        "eval_batch": 512
+      },
+      "seeds": [
+        {
+          "seed": 42,
+          "cv_best_epochs": [
+            5,
+            5,
+            17,
+            18,
+            11
+          ],
+          "final_epochs": 11,
+          "cv_macro_f1_mean": 0.7564788,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.706565,
+              "macro_f1": 0.699909,
+              "precision": 0.660222,
+              "recall": 0.853704,
+              "f1": 0.744599,
+              "auc": 0.789648
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.676894,
+              "macro_f1": 0.666486,
+              "precision": 0.459436,
+              "recall": 0.896667,
+              "f1": 0.607566,
+              "auc": 0.846252
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.736111,
+              "macro_f1": 0.659994,
+              "precision": 0.805179,
+              "recall": 0.837179,
+              "f1": 0.820867,
+              "auc": 0.719388
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.657388,
+              "macro_f1": 0.656995,
+              "precision": 0.648672,
+              "recall": 0.689815,
+              "f1": 0.668611,
+              "auc": 0.719069
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.723849,
+              "macro_f1": 0.697485,
+              "precision": 0.503275,
+              "recall": 0.768333,
+              "f1": 0.608179,
+              "auc": 0.806648
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.591204,
+              "macro_f1": 0.529721,
+              "precision": 0.745112,
+              "recall": 0.659615,
+              "f1": 0.699762,
+              "auc": 0.554312
+            }
+          }
+        },
+        {
+          "seed": 43,
+          "cv_best_epochs": [
+            6,
+            8,
+            7,
+            14,
+            13
+          ],
+          "final_epochs": 8,
+          "cv_macro_f1_mean": 0.7532745999999999,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.694734,
+              "macro_f1": 0.686875,
+              "precision": 0.648906,
+              "recall": 0.851389,
+              "f1": 0.736484,
+              "auc": 0.772128
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.649465,
+              "macro_f1": 0.637988,
+              "precision": 0.434075,
+              "recall": 0.845,
+              "f1": 0.573529,
+              "auc": 0.788492
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.739815,
+              "macro_f1": 0.65604,
+              "precision": 0.79952,
+              "recall": 0.853846,
+              "f1": 0.82579,
+              "auc": 0.728025
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.636511,
+              "macro_f1": 0.634789,
+              "precision": 0.659838,
+              "recall": 0.566667,
+              "f1": 0.609714,
+              "auc": 0.720899
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.738726,
+              "macro_f1": 0.694679,
+              "precision": 0.525886,
+              "recall": 0.643333,
+              "f1": 0.578711,
+              "auc": 0.810433
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.534722,
+              "macro_f1": 0.505981,
+              "precision": 0.747547,
+              "recall": 0.537179,
+              "f1": 0.62514,
+              "auc": 0.557617
+            }
+          }
+        },
+        {
+          "seed": 44,
+          "cv_best_epochs": [
+            7,
+            9,
+            13,
+            21,
+            10
+          ],
+          "final_epochs": 10,
+          "cv_macro_f1_mean": 0.7582517999999999,
+          "test": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.729065,
+              "macro_f1": 0.729065,
+              "precision": 0.731128,
+              "recall": 0.726389,
+              "f1": 0.728751,
+              "auc": 0.801113
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.768945,
+              "macro_f1": 0.738494,
+              "precision": 0.563035,
+              "recall": 0.766667,
+              "f1": 0.649259,
+              "auc": 0.836568
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.689352,
+              "macro_f1": 0.649418,
+              "precision": 0.834462,
+              "recall": 0.710897,
+              "f1": 0.76774,
+              "auc": 0.718867
+            }
+          },
+          "ligo_pooled": {
+            "all": {
+              "n": 4311,
+              "accuracy": 0.627929,
+              "macro_f1": 0.627574,
+              "precision": 0.621716,
+              "recall": 0.657407,
+              "f1": 0.639064,
+              "auc": 0.694882
+            },
+            "benar": {
+              "n": 2151,
+              "accuracy": 0.715481,
+              "macro_f1": 0.693749,
+              "precision": 0.493865,
+              "recall": 0.805,
+              "f1": 0.612167,
+              "auc": 0.824557
+            },
+            "salah": {
+              "n": 2160,
+              "accuracy": 0.540741,
+              "macro_f1": 0.485809,
+              "precision": 0.717458,
+              "recall": 0.600641,
+              "f1": 0.653873,
+              "auc": 0.511803
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
