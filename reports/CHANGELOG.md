@@ -19,3 +19,12 @@
 - Lipatan LIGO: 6 lipatan per huruf (varian ikut huruf dasar), latih = responden latih dengan item lain, uji = responden uji dengan item lipatan.
 - Baseline `svm_mfcc` (run `20261101-225111_svm_mfcc_all`, commit 0a70379, tanpa augmentasi). Macro-F1 uji: S1 0,685, S3 0,665, T2 0,666;
   LIGO: 0,609 / 0,610 / 0,617. Baseline mayoritas sekitar 0,333.
+
+## 2026-11-02 — Model klasik lanjutan (Random Forest, XGBoost)
+
+- `make_model` mendukung `rf` dan `xgb`; config bisa punya `model.fixed` (parameter tetap) selain `model.grid`. Commit e708014.
+- Run `20261101-234341_rf_mfcc_all` dan `20261102-004931_xgb_mfcc_all`, protokol sama dengan SVM (grid di CV fold 1-5, uji sekali, LIGO tanpa tuning ulang), tanpa augmentasi.
+- Macro-F1 uji (RF / XGB / SVM): S1 0,695 / 0,689 / 0,685; S3 0,672 / 0,668 / 0,665; T2 0,674 / 0,662 / 0,666.
+  LIGO pooled (RF / XGB / SVM): S1 0,629 / 0,624 / 0,609; S3 0,620 / 0,617 / 0,610; T2 0,626 / 0,611 / 0,617.
+- Ketiga model klasik berbeda tipis (selisih uji di bawah 0,02, masih di dalam std antar-fold CV 0,02-0,06). Skor Data Salah tetap sekitar 0,52-0,58 untuk semua model.
+- Parameter terbaik RF (max_depth None, min_samples_leaf 1) dan XGB (n_estimators 600, max_depth 6) ada di tepi grid, sama seperti SVM.
