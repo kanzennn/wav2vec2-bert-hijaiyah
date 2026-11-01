@@ -82,15 +82,23 @@ def append_results(rows: list):
 
 
 def summarize(results: pd.DataFrame) -> pd.DataFrame:
-    """Ringkasan: CV = mean +- std antar-fold; test dan ligo-pooled = satu angka."""
+    """Ringkasan per (sifat, model, fitur), hanya dari run terakhir tiap kelompok.
+
+    CV = mean +- std antar-fold (dan antar-seed bila ada beberapa seed); uji dan LIGO-pooled = mean +- std antar-seed
+    (std kosong bila hanya satu seed)."""
     r = results[results.subset == "all"]
-    cv = r[r["mode"] == "cv"].groupby(["sifat", "model", "fitur"]).macro_f1.agg(["mean", "std"]).round(4)
+    keys = ["sifat", "model", "fitur"]
+    last_run = r.groupby(keys).run_id.transform("last")
+    r = r[r.run_id == last_run]
+    cv = r[r["mode"] == "cv"].groupby(keys).macro_f1.agg(["mean", "std"])
     cv.columns = ["cv_macro_f1_mean", "cv_macro_f1_std"]
-    last = lambda m, f=None: r[(r["mode"] == m) & ((r.fold.astype(str) == f) if f else True)] \
-        .groupby(["sifat", "model", "fitur"]).last()[["macro_f1", "auc"]]
-    test = last("test").add_prefix("test_")
-    ligo = last("ligo", "pooled").add_prefix("ligo_")
-    return cv.join(test, how="outer").join(ligo, how="outer").round(4)
+    parts = [cv]
+    for name, sel in (("test", r["mode"] == "test"), ("ligo", (r["mode"] == "ligo") & (r.fold.astype(str) == "pooled"))):
+        g = r[sel].groupby(keys)
+        parts.append(g.macro_f1.agg(["mean", "std"]).set_axis([f"{name}_macro_f1", f"{name}_macro_f1_std"], axis=1))
+        parts.append(g.auc.mean().rename(f"{name}_auc"))
+        parts.append(g.seed.nunique().rename(f"{name}_n_seed") if name == "test" else None)
+    return pd.concat([x for x in parts if x is not None], axis=1).sort_index().round(4)
 
 
 if __name__ == "__main__":

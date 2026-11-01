@@ -1,4 +1,6 @@
-"""Training model klasik: python -m ta.train --config configs/svm_mfcc.yaml --task S1 [--smoke]
+"""Training: python -m ta.train --config configs/svm_mfcc.yaml --task S1 [--smoke]
+
+Model klasik (svm, rf, xgb) dijalankan di sini; CNN/CRNN diteruskan ke ta.train_dl.
 
 Alur per sifat:
 1. Grid hiperparameter dinilai dengan validasi silang fold 1-5 (split latih); pilih macro-F1 rata-rata tertinggi.
@@ -29,6 +31,7 @@ from ta.models.classical import decision_scores, expand_grid, make_model
 from ta.paths import ROOT, RUNS_DIR
 from ta.utils import detect_device, git_info, set_seed
 
+DEEP_MODELS = ("cnn", "crnn")
 PRED_COLUMNS = ["source_id", "category", "is_correct", "responden", "item", "huruf_no", "sub", "rep", "split", "fold"]
 
 
@@ -148,15 +151,29 @@ def main():
 
     index = build_index()
     build_cache(index, {**DEFAULT_PREPROCESS, **cfg.get("preprocess", {})}, n_jobs=cfg.get("n_jobs", 4))
-    X, names = load_features(cfg, index)
-    if args.smoke:
-        index = smoke_subset(index, cfg.get("smoke", {}).get("fraction", 0.1), cfg["seed"])
+    # fitur selalu dihitung untuk semua rekaman (cache lengkap), baru diambil subsetnya untuk --smoke
+    deep = cfg["model"]["type"] in DEEP_MODELS
+    if deep:
+        from ta.features.melspec import load_mel_features
+        from ta.train_dl import run_task_dl
+        X, vf = load_mel_features(cfg, index, n_jobs=cfg.get("n_jobs", 4))
+        names = [f"mel{i}" for i in range(X.shape[1])]
+    else:
         X, names = load_features(cfg, index)
-    print(f"run {run_id}: {len(index)} rekaman, {X.shape[1]} fitur, device {detect_device()}, git {git['commit'][:8]}{' (dirty)' if git['dirty'] else ''}")
+    if args.smoke:
+        sub = smoke_subset(index, cfg.get("smoke", {}).get("fraction", 0.1), cfg["seed"])
+        rows = index.reset_index(drop=True).index[index.source_id.isin(set(sub.source_id))]
+        index, X = sub, X[rows]
+        if deep:
+            vf = vf[rows]
+    print(f"run {run_id}: {len(index)} rekaman, fitur {X.shape[1:]}, device {detect_device()}, git {git['commit'][:8]}{' (dirty)' if git['dirty'] else ''}")
 
     all_rows, summaries = [], []
     for t in tasks:
-        rows, s = run_task(t, cfg, index, X, run_dir, args.smoke, run_id)
+        if deep:
+            rows, s = run_task_dl(t, cfg, index, X, vf, run_dir, args.smoke, run_id)
+        else:
+            rows, s = run_task(t, cfg, index, X, run_dir, args.smoke, run_id)
         all_rows += rows
         summaries.append(s)
 
