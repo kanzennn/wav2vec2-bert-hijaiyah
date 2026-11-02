@@ -7,7 +7,14 @@ Alur per sifat, diulang untuk tiap seed di cfg["seeds"]:
 4. Leave-item-group-out dengan hiperparameter dan jumlah epoch yang sama.
 Normalisasi (per pita Mel / per dimensi embedding) dihitung dari data latih tiap run (fold / latih penuh / lipatan LIGO).
 Audio mentah untuk fine-tune hanya dinormalisasi per rekaman (features/raw.py).
+
+Jeda/lanjut: tiap unit (sifat, seed, cv/test/ligo, fold) disimpan ke run_dir/units/ begitu selesai, dan model
+yang sedang dilatih di-checkpoint tiap epoch ke run_dir/checkpoints/. `python -m ta.train --resume <run_dir>`
+melewati unit yang sudah ada dan melanjutkan unit yang terpotong dari epoch terakhirnya.
 """
+import json
+import os
+import random
 import time
 
 import numpy as np
@@ -128,9 +135,34 @@ def predict(model, data, idx, bs):
     return torch.cat(probs).cpu().numpy()
 
 
-def train_model(cfg, data, tr, seed, va=None, epochs=None, log=None):
+def _atomic(path, write):
+    """Tulis ke berkas sementara lalu rename, supaya berkas tidak pernah setengah jadi bila proses dihentikan."""
+    tmp = path.with_name(path.name + ".tmp")
+    write(tmp)
+    os.replace(tmp, path)
+
+
+def _rng_state():
+    st = {"python": random.getstate(), "numpy": np.random.get_state(), "torch": torch.get_rng_state()}
+    if torch.cuda.is_available():
+        st["cuda"] = torch.cuda.get_rng_state_all()
+    return st
+
+
+def _set_rng_state(st):
+    random.setstate(st["python"])
+    np.random.set_state(st["numpy"])
+    torch.set_rng_state(st["torch"].cpu())
+    if "cuda" in st and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all([s.cpu() for s in st["cuda"]])
+
+
+def train_model(cfg, data, tr, seed, va=None, epochs=None, ckpt=None):
     """Latih satu model. Dengan va: early stopping di macro-F1 va, kembalikan bobot terbaik.
-    Tanpa va: latih tepat `epochs` epoch."""
+    Tanpa va: latih tepat `epochs` epoch. Mengembalikan (model, epoch_terpakai, riwayat per epoch).
+
+    Bila `ckpt` (Path) diberikan, keadaan lengkap (model, optimizer, scaler AMP, epoch, bobot terbaik, RNG)
+    disimpan tiap akhir epoch; bila berkasnya sudah ada, training dilanjutkan dari epoch berikutnya."""
     tc = {**DEFAULT_TRAIN, **cfg.get("train", {})}
     set_seed(seed)
     dev = data.device
@@ -143,8 +175,17 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, log=None):
     gen = torch.Generator(device="cpu").manual_seed(seed)
     tr_t = torch.as_tensor(np.array(tr))
     n_epochs = epochs if va is None else tc["max_epochs"]
-    best = (-1.0, 0, None)
-    for ep in range(1, n_epochs + 1):
+    best, log, start = (-1.0, 0, None), [], 1
+    if ckpt is not None and ckpt.exists():
+        st = torch.load(ckpt, map_location=dev, weights_only=False)
+        model.load_state_dict(st["model"])
+        opt.load_state_dict(st["opt"])
+        scaler.load_state_dict(st["scaler"])
+        gen.set_state(st["gen"].cpu())
+        _set_rng_state(st["rng"])
+        best, log, start = st["best"], st["log"], st["epoch"] + 1
+        print(f"  lanjut dari {ckpt.name} epoch {st['epoch']}")
+    for ep in range(start, n_epochs + 1):
         model.train()
         perm = tr_t[torch.randperm(len(tr_t), generator=gen)].to(dev)
         tot = 0.0
@@ -158,6 +199,7 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, log=None):
             scaler.update()
             tot += loss.item() * len(c)
         row = {"epoch": ep, "train_loss": tot / len(tr)}
+        stop = False
         if va is not None:
             p = predict(model, data, va, tc["eval_batch"])
             yv = data.y[torch.as_tensor(np.array(va), device=dev)].cpu().numpy()
@@ -165,15 +207,18 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, log=None):
             if row["macro_f1"] > best[0]:
                 best = (row["macro_f1"], ep, {k: v.detach().clone() for k, v in model.state_dict().items()})
             elif ep - best[1] >= tc["patience"]:
-                if log is not None:
-                    log.append(row)
-                break
-        if log is not None:
-            log.append(row)
+                stop = True
+        log.append(row)
+        if stop:
+            break
+        if ckpt is not None and ep < n_epochs:
+            st = {"epoch": ep, "model": model.state_dict(), "opt": opt.state_dict(), "scaler": scaler.state_dict(),
+                  "gen": gen.get_state(), "rng": _rng_state(), "best": best, "log": log}
+            _atomic(ckpt, lambda t: torch.save(st, t))
     if va is not None:
         model.load_state_dict(best[2])
-        return model, best[1]
-    return model, n_epochs
+        return model, best[1], log
+    return model, n_epochs, log
 
 
 def make_pred(index, te, y, prob, seed):
@@ -181,6 +226,25 @@ def make_pred(index, te, y, prob, seed):
     p = index.loc[te, PRED_COLUMNS].copy()
     p["seed"], p["y_true"], p["y_pred"], p["score"] = seed, y[te], (prob >= 0.5).astype(int), prob
     return p.reset_index(drop=True)
+
+
+def run_unit(run_dir, key, fit):
+    """Jalankan satu unit (satu model dilatih lalu memprediksi) atau muat hasilnya bila sudah ada.
+
+    fit(ckpt_path) -> (prediksi, meta). Hasil selalu dibaca ulang dari disk, jadi run yang dilanjutkan dan
+    run tanpa jeda memakai data yang persis sama untuk agregasi."""
+    units, ckpts = run_dir / "units", run_dir / "checkpoints"
+    pred_p, meta_p = units / f"{key}.csv", units / f"{key}.json"
+    if not meta_p.exists():
+        units.mkdir(exist_ok=True)
+        ckpts.mkdir(exist_ok=True)
+        ckpt = ckpts / f"{key}.pt"
+        pred, meta = fit(ckpt)
+        _atomic(pred_p, lambda t: pred.to_csv(t, index=False))
+        _atomic(meta_p, lambda t: t.write_text(json.dumps(meta, indent=1, default=float), encoding="utf-8"))
+        ckpt.unlink(missing_ok=True)
+    pred = pd.read_csv(pred_p, dtype={"source_id": str, "item": str, "fold": str})
+    return pred, json.loads(meta_p.read_text(encoding="utf-8"))
 
 
 def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
@@ -197,16 +261,20 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
     data = make_data(cfg, feats, y, device)
     rows, preds, summaries = [], {"cv": [], "test": [], "ligo": []}, []
 
+    def fit(tr, te, seed, va=None, epochs=None):
+        def _fit(ckpt):
+            model, ep, log = train_model(cfg, data, tr, seed, va=va, epochs=epochs, ckpt=ckpt)
+            return make_pred(index, te, y, predict(model, data, te, tc["eval_batch"]), seed), {"epochs": ep, "history": log}
+        return _fit
+
     for seed in seeds:
         cfg_s = {**cfg, "seed": seed}
         # 1. CV + early stopping
         t0, hist, best_epochs = time.time(), [], []
         for f, tr, va in cv_folds(index):
-            log = []
-            model, be = train_model(cfg, data, tr, seed, va=va, log=log)
-            hist += [{"seed": seed, "fold": f, **r} for r in log]
-            best_epochs.append(be)
-            p = make_pred(index, va, y, predict(model, data, va, tc["eval_batch"]), seed)
+            p, meta = run_unit(run_dir, f"{task}_seed{seed}_cv_{f}", fit(tr, va, seed, va=va))
+            hist += [{"seed": seed, "fold": f, **r} for r in meta["history"]]
+            best_epochs.append(meta["epochs"])
             preds["cv"].append(p)
             rows += result_rows(task, cfg_s, "cv", f, subset_metrics(p), run_id)
         pd.DataFrame(hist).to_csv(run_dir / f"{task}_seed{seed}_cv_history.csv", index=False)
@@ -217,8 +285,7 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
 
         # 2. uji akhir (fold 0), sekali per seed
         tr, te = train_test_indices(index)
-        model, _ = train_model(cfg, data, tr, seed, epochs=final_epochs)
-        p = make_pred(index, te, y, predict(model, data, te, tc["eval_batch"]), seed)
+        p, _ = run_unit(run_dir, f"{task}_seed{seed}_test_0", fit(tr, te, seed, epochs=final_epochs))
         preds["test"].append(p)
         test_m = subset_metrics(p)
         rows += result_rows(task, cfg_s, "test", 0, test_m, run_id)
@@ -231,8 +298,8 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
         for k, tr_k, te_k in ligo_folds(index):
             if len(te_k) == 0:
                 continue
-            model, _ = train_model(cfg, data, tr_k, seed, epochs=final_epochs)
-            pk = make_pred(index, te_k, y, predict(model, data, te_k, tc["eval_batch"]), seed).assign(ligo_fold=k)
+            pk, _ = run_unit(run_dir, f"{task}_seed{seed}_ligo_{k}", fit(tr_k, te_k, seed, epochs=final_epochs))
+            pk = pk.assign(ligo_fold=k)
             lp.append(pk)
             rows += result_rows(task, cfg_s, "ligo", k, subset_metrics(pk), run_id)
         lp = pd.concat(lp)

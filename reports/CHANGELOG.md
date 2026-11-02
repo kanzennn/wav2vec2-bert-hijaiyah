@@ -41,3 +41,11 @@
   LIGO pooled: CNN 0,570 / 0,592 / 0,640; CRNN 0,669 / 0,629 / 0,651.
 - CRNN terbaik di ketiga sifat (uji dan LIGO). CNN tidak lebih baik dari model klasik kecuali T2, dan S3-nya turun jauh dari CV (0,679) ke uji (0,605).
 - Variasi antar-fold CV besar untuk deep learning (mis. CRNN S1: fold 1 0,596 sampai fold 3 0,858).
+
+## 2026-11-02 — Jeda/lanjut untuk training deep learning
+
+- `python -m ta.train --resume <run_dir>`: tiap unit (sifat, seed, cv/test/ligo, fold) disimpan ke `run_dir/units/` begitu selesai,
+  model yang sedang dilatih di-checkpoint tiap epoch ke `run_dir/checkpoints/` (model, optimizer, scaler AMP, bobot terbaik, RNG).
+  Resume memakai `config.yaml` dari run_dir dan menolak config/--task yang berbeda. Baris `reports/results.csv` dengan run_id yang sama diganti, tidak dobel.
+- Diuji: smoke CNN yang dibunuh dua kali di tengah lalu dilanjutkan menghasilkan 10 berkas csv identik dengan run tanpa jeda.
+- Run fine-tune wav2vec `20261102-083223_w2v_finetune_all` dimulai dengan kode sebelum fitur ini, jadi run itu belum bisa dilanjutkan bila dihentikan.

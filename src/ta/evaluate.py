@@ -76,8 +76,14 @@ def error_tables(pred: pd.DataFrame):
 
 
 def append_results(rows: list):
+    """Tambahkan baris ke results.csv. Baris lama dengan run_id yang sama dibuang dulu (run yang dilanjutkan)."""
     df = pd.DataFrame(rows)[RESULT_COLUMNS]
     RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    if RESULTS_CSV.exists():
+        old = pd.read_csv(RESULTS_CSV, dtype=str)
+        dup = old.run_id.isin(set(df.run_id))
+        if dup.any():
+            old[~dup].to_csv(RESULTS_CSV, index=False)
     df.to_csv(RESULTS_CSV, mode="a", header=not RESULTS_CSV.exists(), index=False)
 
 

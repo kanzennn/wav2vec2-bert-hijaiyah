@@ -13,6 +13,7 @@ import json
 import shutil
 import time
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -149,21 +150,56 @@ def load_deep_features(cfg, index):
     raise ValueError(f"fitur deep learning belum didukung: {kind}")
 
 
+def load_resume(args):
+    """Baca run_dir, run_args.json, dan config.yaml dari run yang mau dilanjutkan; tolak bila tidak cocok."""
+    run_dir = Path(args.resume).resolve()
+    if not run_dir.is_dir():
+        run_dir = (RUNS_DIR / args.resume).resolve()
+    if not (run_dir / "run_args.json").exists():
+        raise SystemExit(f"{run_dir} tidak bisa dilanjutkan (run_args.json tidak ada; run dibuat sebelum fitur resume)")
+    saved = json.loads((run_dir / "run_args.json").read_text(encoding="utf-8"))
+    cfg = yaml.safe_load(open(run_dir / "config.yaml", encoding="utf-8"))
+    if cfg["model"]["type"] not in DEEP_MODELS:
+        raise SystemExit("--resume hanya untuk model deep learning")
+    if args.config and yaml.safe_load(open(args.config, encoding="utf-8")) != cfg:
+        raise SystemExit(f"config {args.config} berbeda dengan {run_dir / 'config.yaml'}; resume ditolak")
+    if args.task and args.task != saved["task"]:
+        raise SystemExit(f"--task {args.task} berbeda dengan run aslinya ({saved['task']})")
+    if args.smoke and not saved["smoke"]:
+        raise SystemExit("--smoke berbeda dengan run aslinya")
+    return run_dir, saved, cfg
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
-    ap.add_argument("--task", default="all", choices=[*TASKS, "all"])
+    ap.add_argument("--config")
+    ap.add_argument("--task", choices=[*TASKS, "all"])
     ap.add_argument("--smoke", action="store_true")
+    ap.add_argument("--resume", metavar="RUN_DIR", help="lanjutkan run deep learning yang terhenti")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
+    git = git_info()
+    if args.resume:
+        run_dir, saved, cfg = load_resume(args)
+        args.task, args.smoke = saved["task"], saved["smoke"]
+        run_id = run_dir.name
+        resumes = saved.get("resumes", []) + [{"time": f"{datetime.now():%Y%m%d-%H%M%S}", "git": git}]
+        (run_dir / "run_args.json").write_text(json.dumps({**saved, "resumes": resumes}, indent=2), encoding="utf-8")
+        git = saved["git"]
+        print(f"lanjut {run_id}; git saat ini {resumes[-1]['git']['commit'][:8]}")
+    else:
+        if not args.config:
+            ap.error("--config wajib (kecuali dengan --resume)")
+        args.task = args.task or "all"
+        cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
+        run_id = f"{datetime.now():%Y%m%d-%H%M%S}_{cfg['name']}_{args.task}{'_smoke' if args.smoke else ''}"
+        run_dir = RUNS_DIR / run_id
+        run_dir.mkdir(parents=True)
+        shutil.copy(args.config, run_dir / "config.yaml")
+        (run_dir / "run_args.json").write_text(json.dumps({"task": args.task, "smoke": args.smoke, "git": git}, indent=2),
+                                               encoding="utf-8")
     set_seed(cfg["seed"])
     tasks = list(TASKS) if args.task == "all" else [args.task]
-    git = git_info()
-    run_id = f"{datetime.now():%Y%m%d-%H%M%S}_{cfg['name']}_{args.task}{'_smoke' if args.smoke else ''}"
-    run_dir = RUNS_DIR / run_id
-    run_dir.mkdir(parents=True)
-    shutil.copy(args.config, run_dir / "config.yaml")
 
     index = build_index()
     build_cache(index, {**DEFAULT_PREPROCESS, **cfg.get("preprocess", {})}, n_jobs=cfg.get("n_jobs", 4))
