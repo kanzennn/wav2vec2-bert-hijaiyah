@@ -1,11 +1,12 @@
-"""Training CNN/CRNN (log-Mel). Dipanggil dari ta.train bila model.type = cnn atau crnn.
+"""Training deep learning: CNN/CRNN (log-Mel) dan wav2vec 2.0 (beku / fine-tune). Dipanggil dari ta.train.
 
 Alur per sifat, diulang untuk tiap seed di cfg["seeds"]:
 1. Validasi silang fold 1-5: latih di 4 fold, early stopping (macro-F1) di fold sisanya.
 2. Jumlah epoch akhir = median epoch terbaik dari 5 fold CV (dipilih tanpa melihat data uji).
 3. Latih ulang di seluruh split latih selama epoch akhir itu, uji SEKALI di fold 0.
 4. Leave-item-group-out dengan hiperparameter dan jumlah epoch yang sama.
-Normalisasi per pita Mel dihitung dari frame valid data latih tiap run (fold / latih penuh / lipatan LIGO).
+Normalisasi (per pita Mel / per dimensi embedding) dihitung dari data latih tiap run (fold / latih penuh / lipatan LIGO).
+Audio mentah untuk fine-tune hanya dinormalisasi per rekaman (features/raw.py).
 """
 import time
 
@@ -22,8 +23,9 @@ from ta.utils import set_seed
 DEFAULT_TRAIN = dict(batch_size=64, lr=1e-3, weight_decay=1e-4, max_epochs=40, patience=8, amp=True, eval_batch=512)
 
 
-def build_model(cfg, n_mels):
+def build_model(cfg, data):
     kind, params = cfg["model"]["type"], {**cfg["model"].get("params", {})}
+    n_mels = data.X.shape[1]
     if "channels" in params:
         params["channels"] = tuple(params["channels"])
     if kind == "cnn":
@@ -32,6 +34,12 @@ def build_model(cfg, n_mels):
     if kind == "crnn":
         from ta.models.crnn import MelCRNN
         return MelCRNN(n_mels=n_mels, **params)
+    if kind == "w2v_frozen":
+        from ta.models.wav2vec import W2VHead
+        return W2VHead(n_layers=data.X.shape[1], dim=data.X.shape[2], **params)
+    if kind == "w2v_finetune":
+        from ta.models.wav2vec import W2VFineTune
+        return W2VFineTune(checkpoint=cfg["model"].get("checkpoint", "pretrained/facebook-wav2vec2-base"), **params)
     raise ValueError(f"model deep learning belum didukung: {kind}")
 
 
@@ -39,6 +47,7 @@ class MelData:
     """Seluruh spectrogram (float16) dan label di GPU; batch dinormalisasi saat diambil."""
 
     def __init__(self, X, vf, y, device):
+        self.device = device
         self.X = torch.from_numpy(X).to(device)
         self.vf = torch.from_numpy(vf.astype(np.int64)).to(device)
         self.y = torch.from_numpy(y.astype(np.int64)).to(device)
@@ -64,13 +73,56 @@ class MelData:
         return x, self.vf[idx], self.y[idx]
 
 
+class EmbData:
+    """Embedding wav2vec beku [N, lapis, dim] di GPU; standarisasi per (lapis, dim) dari data latih."""
+
+    def __init__(self, E, y, device):
+        self.device = device
+        self.X = torch.from_numpy(np.ascontiguousarray(E)).to(device)
+        self.y = torch.from_numpy(y.astype(np.int64)).to(device)
+
+    def fit_norm(self, idx):
+        x = self.X[torch.as_tensor(np.array(idx), device=self.device)].double()
+        self.mean = x.mean(0).float()
+        self.std = torch.clamp(x.std(0), min=1e-6).float()
+
+    def batch(self, idx):
+        return (self.X[idx].float() - self.mean) / self.std, None, self.y[idx]
+
+
+class RawData:
+    """Audio mentah (sudah dinormalisasi per rekaman) di RAM; dipindah ke GPU per batch."""
+
+    def __init__(self, W, valid, y, device):
+        self.device = device
+        self.X = torch.from_numpy(W)
+        self.valid = torch.from_numpy(valid.astype(np.int64))
+        self.y = torch.from_numpy(y.astype(np.int64)).to(device)
+
+    def fit_norm(self, idx):
+        pass
+
+    def batch(self, idx):
+        i = idx.cpu()
+        return (self.X[i].to(self.device, non_blocking=True).float(), self.valid[i].to(self.device), self.y[idx])
+
+
+def make_data(cfg, feats, y, device):
+    kind = cfg["model"]["type"]
+    if kind in ("cnn", "crnn"):
+        return MelData(*feats, y, device)
+    if kind == "w2v_frozen":
+        return EmbData(feats[0], y, device)
+    return RawData(*feats, y, device)
+
+
 @torch.no_grad()
 def predict(model, data, idx, bs):
     model.eval()
     probs = []
-    for c in torch.split(torch.as_tensor(np.array(idx), device=data.X.device), bs):
+    for c in torch.split(torch.as_tensor(np.array(idx), device=data.device), bs):
         x, l, _ = data.batch(c)
-        with torch.autocast("cuda", enabled=data.X.is_cuda):
+        with torch.autocast("cuda", enabled=data.device.type == "cuda"):
             logits = model(x, l)
         probs.append(torch.softmax(logits.float(), 1)[:, 1])
     return torch.cat(probs).cpu().numpy()
@@ -81,10 +133,11 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, log=None):
     Tanpa va: latih tepat `epochs` epoch."""
     tc = {**DEFAULT_TRAIN, **cfg.get("train", {})}
     set_seed(seed)
-    dev = data.X.device
+    dev = data.device
     data.fit_norm(tr)
-    model = build_model(cfg, data.X.shape[1]).to(dev)
-    opt = torch.optim.Adam(model.parameters(), lr=tc["lr"], weight_decay=tc["weight_decay"])
+    model = build_model(cfg, data).to(dev)
+    groups = model.param_groups(tc) if hasattr(model, "param_groups") else model.parameters()
+    opt = torch.optim.Adam(groups, lr=tc["lr"], weight_decay=tc["weight_decay"])
     scaler = torch.amp.GradScaler("cuda", enabled=tc["amp"] and dev.type == "cuda")
     loss_fn = nn.CrossEntropyLoss()
     gen = torch.Generator(device="cpu").manual_seed(seed)
@@ -130,7 +183,7 @@ def make_pred(index, te, y, prob, seed):
     return p.reset_index(drop=True)
 
 
-def run_task_dl(task, cfg, index, X, vf, run_dir, smoke, run_id):
+def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
     from ta.train import result_rows
     tc = {**DEFAULT_TRAIN, **cfg.get("train", {})}
     if smoke:
@@ -141,7 +194,7 @@ def run_task_dl(task, cfg, index, X, vf, run_dir, smoke, run_id):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     y = get_labels(task, index)
-    data = MelData(X, vf, y, device)
+    data = make_data(cfg, feats, y, device)
     rows, preds, summaries = [], {"cv": [], "test": [], "ligo": []}, []
 
     for seed in seeds:
@@ -171,7 +224,7 @@ def run_task_dl(task, cfg, index, X, vf, run_dir, smoke, run_id):
         rows += result_rows(task, cfg_s, "test", 0, test_m, run_id)
         cm = confusion(p)
         cm.to_csv(run_dir / f"{task}_seed{seed}_cm_test.csv")
-        plot_confusion(cm, f"{task} {cfg['model']['type']}+mel seed {seed} (uji)", run_dir / f"{task}_seed{seed}_cm_test.png")
+        plot_confusion(cm, f"{task} {cfg['model']['type']}+{cfg['features']['type']} seed {seed} (uji)", run_dir / f"{task}_seed{seed}_cm_test.png")
 
         # 3. leave-item-group-out
         lp = []

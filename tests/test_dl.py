@@ -56,3 +56,17 @@ def test_meldata_norm_from_train_only_and_padding_zero():
     assert d.mean.abs().max() < 5                  # statistik tidak tercemar baris 3-5
     x, _, _ = d.batch(torch.tensor([1]))
     assert (x[0, :, 5:] == 0).all()
+
+
+def test_raw_normalization_per_utterance_keeps_padding_zero():
+    from ta.features.raw import normalize_utterance
+    y = np.concatenate([np.random.default_rng(0).normal(3, 2, 100), np.zeros(50)]).astype(np.float32)
+    out = normalize_utterance(y, 100)
+    assert abs(out[:100].mean()) < 1e-4 and abs(out[:100].std() - 1) < 1e-3
+    assert (out[100:] == 0).all()
+
+
+def test_w2v_head_shape():
+    from ta.models.wav2vec import W2VHead
+    out = W2VHead(n_layers=13, dim=768).eval()(torch.randn(4, 13, 768))
+    assert out.shape == (4, 2)

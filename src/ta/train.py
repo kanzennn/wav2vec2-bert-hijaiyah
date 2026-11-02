@@ -31,7 +31,7 @@ from ta.models.classical import decision_scores, expand_grid, make_model
 from ta.paths import ROOT, RUNS_DIR
 from ta.utils import detect_device, git_info, set_seed
 
-DEEP_MODELS = ("cnn", "crnn")
+DEEP_MODELS = ("cnn", "crnn", "w2v_frozen", "w2v_finetune")
 PRED_COLUMNS = ["source_id", "category", "is_correct", "responden", "item", "huruf_no", "sub", "rep", "split", "fold"]
 
 
@@ -133,6 +133,22 @@ def run_task(task, cfg, index, X, run_dir, smoke, run_id):
     return rows, summary
 
 
+def load_deep_features(cfg, index):
+    """Fitur model deep learning untuk semua rekaman di index (tuple array, baris = urutan index)."""
+    kind = cfg["features"]["type"]
+    if kind == "mel":
+        from ta.features.melspec import load_mel_features
+        return load_mel_features(cfg, index, n_jobs=cfg.get("n_jobs", 4))
+    if kind == "raw":
+        from ta.features.raw import load_raw_audio
+        W, valid = load_raw_audio(cfg, index)
+        if cfg["model"]["type"] == "w2v_frozen":
+            from ta.models.wav2vec import extract_embeddings
+            return (np.asarray(extract_embeddings(cfg, index, W, valid)),)
+        return W, valid
+    raise ValueError(f"fitur deep learning belum didukung: {kind}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -154,10 +170,9 @@ def main():
     # fitur selalu dihitung untuk semua rekaman (cache lengkap), baru diambil subsetnya untuk --smoke
     deep = cfg["model"]["type"] in DEEP_MODELS
     if deep:
-        from ta.features.melspec import load_mel_features
         from ta.train_dl import run_task_dl
-        X, vf = load_mel_features(cfg, index, n_jobs=cfg.get("n_jobs", 4))
-        names = [f"mel{i}" for i in range(X.shape[1])]
+        feats = load_deep_features(cfg, index)
+        X, names = feats[0], [cfg["features"]["type"]]
     else:
         X, names = load_features(cfg, index)
     if args.smoke:
@@ -165,13 +180,13 @@ def main():
         rows = index.reset_index(drop=True).index[index.source_id.isin(set(sub.source_id))]
         index, X = sub, X[rows]
         if deep:
-            vf = vf[rows]
+            feats = tuple(f[rows] for f in feats)
     print(f"run {run_id}: {len(index)} rekaman, fitur {X.shape[1:]}, device {detect_device()}, git {git['commit'][:8]}{' (dirty)' if git['dirty'] else ''}")
 
     all_rows, summaries = [], []
     for t in tasks:
         if deep:
-            rows, s = run_task_dl(t, cfg, index, X, vf, run_dir, args.smoke, run_id)
+            rows, s = run_task_dl(t, cfg, index, feats, run_dir, args.smoke, run_id)
         else:
             rows, s = run_task(t, cfg, index, X, run_dir, args.smoke, run_id)
         all_rows += rows
