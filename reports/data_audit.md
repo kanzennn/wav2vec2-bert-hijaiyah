@@ -121,6 +121,7 @@ Data latih seimbang (porsi kelas 1 sekitar 0,5) untuk ketiga sifat, jadi **class
 | uji | 4311 | 0 | 0 | 0 | 0 | 0 |
 
 - `grup_cv` di lebih dari satu fold: 0; di lebih dari satu split: 0
+- `responden`: 40 responden menjadi 37 `grup_cv` (digabung: benar-8_18_19, salah-13_15); responden di lebih dari satu fold: 0; di lebih dari satu split: 0; irisan responden latih dan uji: 0
 
 Porsi kelas 1 per fold latih:
 

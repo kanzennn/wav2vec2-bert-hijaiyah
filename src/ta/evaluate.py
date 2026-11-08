@@ -107,7 +107,41 @@ def summarize(results: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([x for x in parts if x is not None], axis=1).sort_index().round(4)
 
 
+def improvement(results: pd.DataFrame, model="w2v_bert", baseline="xgb") -> pd.DataFrame:
+    """Peningkatan = skor model usulan dikurangi skor baseline, per sifat, pada fold dan data uji yang sama.
+
+    CV: selisih per fold 1-5 (model usulan dirata-rata antar-seed di fold itu), dilaporkan mean +- std antar-fold.
+    Uji dan LIGO-pooled: model usulan dirata-rata antar-seed. Hanya run terakhir tiap (sifat, model)."""
+    r = results[results.subset == "all"].copy()
+    r["fold"] = r.fold.astype(str)
+    r = r[r.run_id == r.groupby(["sifat", "model"]).run_id.transform("last")]
+    out = []
+    for mode, folds in (("cv", None), ("test", ["0"]), ("ligo", ["pooled"])):
+        sub = r[r["mode"] == mode]
+        if folds:
+            sub = sub[sub.fold.isin(folds)]
+        per_fold = sub.groupby(["sifat", "model", "fold"])[["macro_f1", "accuracy"]].mean()
+        for sifat in sorted(sub.sifat.unique()):
+            try:
+                m, b = per_fold.loc[(sifat, model)], per_fold.loc[(sifat, baseline)]
+            except KeyError:
+                continue
+            common = m.index.intersection(b.index)
+            d = m.loc[common] - b.loc[common]
+            out.append({"sifat": sifat, "mode": mode, "n_fold": len(common),
+                        f"{baseline}_macro_f1": b.loc[common].macro_f1.mean(), f"{model}_macro_f1": m.loc[common].macro_f1.mean(),
+                        "delta_macro_f1": d.macro_f1.mean(), "delta_macro_f1_std": d.macro_f1.std() if len(d) > 1 else float("nan"),
+                        "delta_accuracy": d.accuracy.mean(), "delta_accuracy_std": d.accuracy.std() if len(d) > 1 else float("nan")})
+    return pd.DataFrame(out).round(4)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Ringkas reports/results.csv")
-    ap.parse_args()
-    print(summarize(pd.read_csv(RESULTS_CSV)).to_string())
+    ap.add_argument("--improvement", action="store_true", help="tulis juga reports/improvement.csv (Wav2Vec2-BERT - XGBoost)")
+    args = ap.parse_args()
+    res = pd.read_csv(RESULTS_CSV)
+    print(summarize(res).to_string())
+    if args.improvement:
+        imp = improvement(res)
+        imp.to_csv(REPORTS_DIR / "improvement.csv", index=False)
+        print(imp.to_string(index=False))

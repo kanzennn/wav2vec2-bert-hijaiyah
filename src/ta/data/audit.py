@@ -115,7 +115,12 @@ def run(n_jobs=4):
     R += ["## 5. Sebaran label dan split", "", md_table(lab, index=False), "",
           "Data latih seimbang (porsi kelas 1 sekitar 0,5) untuk ketiga sifat, jadi **class weight tidak dipakai**.", "",
           md_table(pd.crosstab(a.split, a.fold)), "",
-          f"- `grup_cv` di lebih dari satu fold: {int((a.groupby('grup_cv').fold.nunique() > 1).sum())}; di lebih dari satu split: {int((a.groupby('grup_cv').split.nunique() > 1).sum())}", ""]
+          f"- `grup_cv` di lebih dari satu fold: {int((a.groupby('grup_cv').fold.nunique() > 1).sum())}; di lebih dari satu split: {int((a.groupby('grup_cv').split.nunique() > 1).sum())}",
+          f"- `responden`: {a.responden.nunique()} responden menjadi {a.grup_cv.nunique()} `grup_cv` "
+          f"(digabung: {', '.join(sorted(g for g in a.grup_cv.unique() if '_' in g))}); "
+          f"responden di lebih dari satu fold: {int((a.groupby('responden').fold.nunique() > 1).sum())}; "
+          f"di lebih dari satu split: {int((a.groupby('responden').split.nunique() > 1).sum())}; "
+          f"irisan responden latih dan uji: {len(set(a.loc[a.split == 'latih', 'responden']) & set(a.loc[a.split == 'uji', 'responden']))}", ""]
     per_fold = a[a.split == "latih"].groupby("fold")[[f"y_{t}" for t in TASKS]].mean().round(3)
     R += ["Porsi kelas 1 per fold latih:", "", md_table(per_fold), ""]
 

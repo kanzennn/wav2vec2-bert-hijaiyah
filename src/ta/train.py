@@ -1,8 +1,8 @@
-"""Training: python -m ta.train --config configs/svm_mfcc.yaml --task S1 [--smoke]
+"""Training: python -m ta.train --config configs/xgb_mfcc.yaml --task S1 [--smoke] [--resume RUN_DIR]
 
-Model klasik (svm, rf, xgb) dijalankan di sini; CNN/CRNN diteruskan ke ta.train_dl.
+Baseline XGBoost dijalankan di sini; Wav2Vec2-BERT diteruskan ke ta.train_dl.
 
-Alur per sifat:
+Alur per sifat (XGBoost):
 1. Grid hiperparameter dinilai dengan validasi silang fold 1-5 (split latih); pilih macro-F1 rata-rata tertinggi.
 2. Model terbaik dilatih ulang di seluruh split latih, diuji SEKALI di split uji (fold 0).
 3. Leave-item-group-out dengan hiperparameter yang sama (tanpa tuning ulang).
@@ -28,11 +28,11 @@ from ta.data.split import cv_folds, ligo_folds, train_test_indices
 from ta.evaluate import (append_results, compute_metrics, confusion, error_tables, plot_confusion,
                          subset_metrics)
 from ta.features import load_features
-from ta.models.classical import decision_scores, expand_grid, make_model
+from ta.models.xgboost_model import decision_scores, expand_grid, make_model
 from ta.paths import ROOT, RUNS_DIR
 from ta.utils import detect_device, git_info, set_seed
 
-DEEP_MODELS = ("cnn", "crnn", "w2v_frozen", "w2v_finetune")
+DEEP_MODELS = ("w2v_bert",)
 PRED_COLUMNS = ["source_id", "category", "is_correct", "responden", "item", "huruf_no", "sub", "rep", "split", "fold"]
 
 
@@ -137,16 +137,9 @@ def run_task(task, cfg, index, X, run_dir, smoke, run_id):
 def load_deep_features(cfg, index):
     """Fitur model deep learning untuk semua rekaman di index (tuple array, baris = urutan index)."""
     kind = cfg["features"]["type"]
-    if kind == "mel":
-        from ta.features.melspec import load_mel_features
-        return load_mel_features(cfg, index, n_jobs=cfg.get("n_jobs", 4))
-    if kind == "raw":
-        from ta.features.raw import load_raw_audio
-        W, valid = load_raw_audio(cfg, index)
-        if cfg["model"]["type"] == "w2v_frozen":
-            from ta.models.wav2vec import extract_embeddings
-            return (np.asarray(extract_embeddings(cfg, index, W, valid)),)
-        return W, valid
+    if kind == "w2v_bert_fbank":
+        from ta.features.raw import extract_fbank
+        return extract_fbank(cfg, index)
     raise ValueError(f"fitur deep learning belum didukung: {kind}")
 
 

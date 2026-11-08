@@ -4,7 +4,10 @@ import pandas as pd
 import torch
 
 from ta import evaluate
-from ta.train_dl import EmbData, train_model
+from ta.train_dl import FbankData, train_model
+
+TINY = dict(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, intermediate_size=64, output_hidden_size=32,
+            feature_projection_input_dim=160, conv_depthwise_kernel_size=3)
 
 
 def test_append_results_replaces_same_run_id(tmp_path, monkeypatch):
@@ -19,24 +22,33 @@ def test_append_results_replaces_same_run_id(tmp_path, monkeypatch):
 
 
 def test_checkpoint_resume_matches_uninterrupted(tmp_path):
-    """Latih 4 epoch tanpa jeda vs 2 epoch (checkpoint) lalu lanjut ke 4: bobot akhir harus sama (CPU)."""
+    """Latih 4 epoch tanpa jeda vs berhenti setelah epoch 2 (checkpoint) lalu lanjut: bobot akhir sama (CPU)."""
     rng = np.random.default_rng(0)
-    E = rng.normal(size=(200, 3, 16)).astype(np.float16)
-    y = (E[:, 0, 0] > 0).astype(int)
-    data = EmbData(E, y, torch.device("cpu"))
-    cfg = {"model": {"type": "w2v_frozen", "params": {"hidden": 8}}, "train": {"batch_size": 32, "amp": False}}
-    tr = np.arange(150)
+    F = rng.normal(size=(48, 10, 160)).astype(np.float16)
+    y = (F[:, 0, 0] > 0).astype(int)
+    data = FbankData(F, rng.integers(3, 11, size=48), y, torch.device("cpu"))
+    cfg = {"model": {"type": "w2v_bert", "params": {"random_init_config": TINY, "gradient_checkpointing": False}},
+           "train": {"batch_size": 8, "grad_accum": 2, "optimizer": "adamw", "amp_dtype": "none"}}
+    tr = np.arange(40)
     full, _, log_full = train_model(cfg, data, tr, seed=1, epochs=4)
     ck = tmp_path / "u.pt"
-    train_model(cfg, data, tr, seed=1, epochs=4, ckpt=ck)          # menulis checkpoint epoch 1-3
-    st = torch.load(ck, weights_only=False)
-    assert st["epoch"] == 3
-    # mundurkan ke checkpoint epoch 2 dengan melatih ulang 2 epoch saja
-    ck2 = tmp_path / "v.pt"
-    train_model(cfg, data, tr, seed=1, epochs=3, ckpt=ck2)
-    assert torch.load(ck2, weights_only=False)["epoch"] == 2
-    resumed, _, log_res = train_model(cfg, data, tr, seed=1, epochs=4, ckpt=ck2)
+    train_model(cfg, data, tr, seed=1, epochs=3, ckpt=ck)   # checkpoint terakhir = epoch 2
+    assert torch.load(ck, weights_only=False)["epoch"] == 2
+    resumed, _, log_res = train_model(cfg, data, tr, seed=1, epochs=4, ckpt=ck)
     assert [r["epoch"] for r in log_res] == [1, 2, 3, 4]
     assert [r["train_loss"] for r in log_res] == [r["train_loss"] for r in log_full]
     for k, v in full.state_dict().items():
         assert torch.equal(v, resumed.state_dict()[k])
+
+
+def test_improvement_per_fold():
+    rows = []
+    for f, xm, wm in (("1", 0.6, [0.7, 0.8]), ("2", 0.5, [0.6, 0.6])):
+        rows.append({"sifat": "S1", "model": "xgb", "mode": "cv", "fold": f, "subset": "all", "seed": 42,
+                     "macro_f1": xm, "accuracy": xm, "run_id": "x"})
+        for s, w in zip((42, 43), wm):
+            rows.append({"sifat": "S1", "model": "w2v_bert", "mode": "cv", "fold": f, "subset": "all", "seed": s,
+                         "macro_f1": w, "accuracy": w, "run_id": "w"})
+    imp = evaluate.improvement(pd.DataFrame(rows)).iloc[0]
+    assert imp["n_fold"] == 2
+    assert abs(imp["delta_macro_f1"] - 0.125) < 1e-9          # (0.15 + 0.10) / 2

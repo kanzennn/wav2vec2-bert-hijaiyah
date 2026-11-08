@@ -84,3 +84,9 @@ def test_feature_extraction_uses_audio_only():
     import inspect
     from ta.features.mfcc import mfcc_summary
     assert list(inspect.signature(mfcc_summary).parameters) == ["y", "sr", "p"]
+
+
+def test_responden_in_single_split_and_fold(idx):
+    g = idx.groupby("responden").agg(n_split=("split", "nunique"), n_fold=("fold", "nunique"))
+    assert (g.n_split == 1).all() and (g.n_fold == 1).all()
+    assert idx.responden.nunique() == 40 and idx.grup_cv.nunique() == 37

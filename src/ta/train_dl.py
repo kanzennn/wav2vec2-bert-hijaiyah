@@ -1,12 +1,16 @@
-"""Training deep learning: CNN/CRNN (log-Mel) dan wav2vec 2.0 (beku / fine-tune). Dipanggil dari ta.train.
+"""Training Wav2Vec2-BERT (fine-tune seluruh lapisan). Dipanggil dari ta.train bila model.type = w2v_bert.
 
 Alur per sifat, diulang untuk tiap seed di cfg["seeds"]:
 1. Validasi silang fold 1-5: latih di 4 fold, early stopping (macro-F1) di fold sisanya.
 2. Jumlah epoch akhir = median epoch terbaik dari 5 fold CV (dipilih tanpa melihat data uji).
 3. Latih ulang di seluruh split latih selama epoch akhir itu, uji SEKALI di fold 0.
 4. Leave-item-group-out dengan hiperparameter dan jumlah epoch yang sama.
-Normalisasi (per pita Mel / per dimensi embedding) dihitung dari data latih tiap run (fold / latih penuh / lipatan LIGO).
-Audio mentah untuk fine-tune hanya dinormalisasi per rekaman (features/raw.py).
+Fitur fbank dinormalisasi per rekaman oleh feature extractor bawaan (features/raw.py), jadi tidak ada statistik
+yang dihitung dari data lain.
+
+Supaya muat di GPU 8 GB: autocast bf16, gradient checkpointing, batch kecil + akumulasi gradien, AdamW 8-bit
+(bitsandbytes). Bobot terbaik saat early stopping ditulis ke disk (berkas *.best.pt di samping checkpoint) dan
+checkpoint dibaca langsung ke GPU, supaya tidak perlu menahan 2,3 GB bobot di RAM (RAM bebas bisa sempit).
 
 Jeda/lanjut: tiap unit (sifat, seed, cv/test/ligo, fold) disimpan ke run_dir/units/ begitu selesai, dan model
 yang sedang dilatih di-checkpoint tiap epoch ke run_dir/checkpoints/. `python -m ta.train --resume <run_dir>`
@@ -15,6 +19,7 @@ melewati unit yang sudah ada dan melanjutkan unit yang terpotong dari epoch tera
 import json
 import os
 import random
+import shutil
 import time
 
 import numpy as np
@@ -27,110 +32,57 @@ from ta.data.split import cv_folds, ligo_folds, train_test_indices
 from ta.evaluate import compute_metrics, confusion, error_tables, plot_confusion, subset_metrics
 from ta.utils import set_seed
 
-DEFAULT_TRAIN = dict(batch_size=64, lr=1e-3, weight_decay=1e-4, max_epochs=40, patience=8, amp=True, eval_batch=512)
+DEFAULT_TRAIN = dict(batch_size=8, grad_accum=4, lr=1e-3, backbone_lr=2e-5, weight_decay=0.01, optimizer="adamw8bit",
+                     max_grad_norm=1.0, amp_dtype="bf16", max_epochs=10, patience=3, eval_batch=32, checkpoint=True)
 
 
-def build_model(cfg, data):
+def build_model(cfg):
     kind, params = cfg["model"]["type"], {**cfg["model"].get("params", {})}
-    n_mels = data.X.shape[1]
-    if "channels" in params:
-        params["channels"] = tuple(params["channels"])
-    if kind == "cnn":
-        from ta.models.cnn import MelCNN
-        return MelCNN(n_mels=n_mels, **params)
-    if kind == "crnn":
-        from ta.models.crnn import MelCRNN
-        return MelCRNN(n_mels=n_mels, **params)
-    if kind == "w2v_frozen":
-        from ta.models.wav2vec import W2VHead
-        return W2VHead(n_layers=data.X.shape[1], dim=data.X.shape[2], **params)
-    if kind == "w2v_finetune":
-        from ta.models.wav2vec import W2VFineTune
-        return W2VFineTune(checkpoint=cfg["model"].get("checkpoint", "pretrained/facebook-wav2vec2-base"), **params)
+    if kind == "w2v_bert":
+        from ta.models.wav2vec_bert import DEFAULT_CHECKPOINT, W2VBertClassifier
+        return W2VBertClassifier(checkpoint=cfg["model"].get("checkpoint", DEFAULT_CHECKPOINT), **params)
     raise ValueError(f"model deep learning belum didukung: {kind}")
 
 
-class MelData:
-    """Seluruh spectrogram (float16) dan label di GPU; batch dinormalisasi saat diambil."""
+class FbankData:
+    """Fitur fbank (float16) di RAM, dipindah ke GPU per batch, beserta attention mask dari panjang valid."""
 
-    def __init__(self, X, vf, y, device):
+    def __init__(self, F, lengths, y, device):
         self.device = device
-        self.X = torch.from_numpy(X).to(device)
-        self.vf = torch.from_numpy(vf.astype(np.int64)).to(device)
+        self.X = torch.from_numpy(np.ascontiguousarray(F))
+        self.lengths = torch.from_numpy(lengths.astype(np.int64))
         self.y = torch.from_numpy(y.astype(np.int64)).to(device)
-        self.t = torch.arange(X.shape[2], device=device)
-        self.mean = self.std = None
-
-    def fit_norm(self, idx, chunk=2048):
-        """Mean/std per pita Mel dari frame valid rekaman idx (data latih saja)."""
-        s = ss = n = 0.0
-        for c in torch.split(torch.as_tensor(np.array(idx), device=self.X.device), chunk):
-            x = self.X[c].double()
-            m = (self.t[None, :] < self.vf[c][:, None]).double()[:, None, :]
-            s = s + (x * m).sum((0, 2))
-            ss = ss + (x * x * m).sum((0, 2))
-            n = n + m.sum()
-        mean = s / n
-        self.mean = mean.float()[:, None]
-        self.std = torch.sqrt(torch.clamp(ss / n - mean ** 2, min=1e-6)).float()[:, None]
-
-    def batch(self, idx):
-        x = (self.X[idx].float() - self.mean) / self.std
-        x = x * (self.t[None, :] < self.vf[idx][:, None]).float()[:, None, :]   # padding = 0
-        return x, self.vf[idx], self.y[idx]
-
-
-class EmbData:
-    """Embedding wav2vec beku [N, lapis, dim] di GPU; standarisasi per (lapis, dim) dari data latih."""
-
-    def __init__(self, E, y, device):
-        self.device = device
-        self.X = torch.from_numpy(np.ascontiguousarray(E)).to(device)
-        self.y = torch.from_numpy(y.astype(np.int64)).to(device)
-
-    def fit_norm(self, idx):
-        x = self.X[torch.as_tensor(np.array(idx), device=self.device)].double()
-        self.mean = x.mean(0).float()
-        self.std = torch.clamp(x.std(0), min=1e-6).float()
-
-    def batch(self, idx):
-        return (self.X[idx].float() - self.mean) / self.std, None, self.y[idx]
-
-
-class RawData:
-    """Audio mentah (sudah dinormalisasi per rekaman) di RAM; dipindah ke GPU per batch."""
-
-    def __init__(self, W, valid, y, device):
-        self.device = device
-        self.X = torch.from_numpy(W)
-        self.valid = torch.from_numpy(valid.astype(np.int64))
-        self.y = torch.from_numpy(y.astype(np.int64)).to(device)
-
-    def fit_norm(self, idx):
-        pass
+        self.t = torch.arange(F.shape[1])
 
     def batch(self, idx):
         i = idx.cpu()
-        return (self.X[i].to(self.device, non_blocking=True).float(), self.valid[i].to(self.device), self.y[idx])
+        mask = (self.t[None, :] < self.lengths[i][:, None]).long()
+        return self.X[i].to(self.device).float(), mask.to(self.device), self.y[idx]
 
 
-def make_data(cfg, feats, y, device):
-    kind = cfg["model"]["type"]
-    if kind in ("cnn", "crnn"):
-        return MelData(*feats, y, device)
-    if kind == "w2v_frozen":
-        return EmbData(feats[0], y, device)
-    return RawData(*feats, y, device)
+def _amp(tc, device):
+    """(aktif, dtype) untuk autocast; bf16 tidak butuh GradScaler."""
+    on = device.type == "cuda" and tc["amp_dtype"] in ("bf16", "fp16")
+    return on, (torch.bfloat16 if tc["amp_dtype"] == "bf16" else torch.float16)
+
+
+def make_optimizer(model, tc):
+    groups = model.param_groups(tc) if hasattr(model, "param_groups") else model.parameters()
+    if tc["optimizer"] == "adamw8bit":
+        import bitsandbytes as bnb
+        return bnb.optim.AdamW8bit(groups, lr=tc["lr"], weight_decay=tc["weight_decay"])
+    return torch.optim.AdamW(groups, lr=tc["lr"], weight_decay=tc["weight_decay"])
 
 
 @torch.no_grad()
-def predict(model, data, idx, bs):
+def predict(model, data, idx, bs, tc):
     model.eval()
+    on, dtype = _amp(tc, data.device)
     probs = []
     for c in torch.split(torch.as_tensor(np.array(idx), device=data.device), bs):
-        x, l, _ = data.batch(c)
-        with torch.autocast("cuda", enabled=data.device.type == "cuda"):
-            logits = model(x, l)
+        x, m, _ = data.batch(c)
+        with torch.autocast("cuda", dtype=dtype, enabled=on):
+            logits = model(x, m)
         probs.append(torch.softmax(logits.float(), 1)[:, 1])
     return torch.cat(probs).cpu().numpy()
 
@@ -140,6 +92,14 @@ def _atomic(path, write):
     tmp = path.with_name(path.name + ".tmp")
     write(tmp)
     os.replace(tmp, path)
+
+
+def _save_checkpoint(path, st):
+    """Simpan atomik. Bila disk tidak cukup untuk dua salinan, checkpoint lama dihapus dulu (kalau proses mati
+    tepat saat menulis, unit itu diulang dari awal; hasil unit lain tetap aman)."""
+    if path.exists() and shutil.disk_usage(path.parent).free < 2.2 * path.stat().st_size:
+        path.unlink()
+    _atomic(path, lambda t: torch.save(st, t))
 
 
 def _rng_state():
@@ -161,62 +121,83 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, ckpt=None):
     """Latih satu model. Dengan va: early stopping di macro-F1 va, kembalikan bobot terbaik.
     Tanpa va: latih tepat `epochs` epoch. Mengembalikan (model, epoch_terpakai, riwayat per epoch).
 
-    Bila `ckpt` (Path) diberikan, keadaan lengkap (model, optimizer, scaler AMP, epoch, bobot terbaik, RNG)
-    disimpan tiap akhir epoch; bila berkasnya sudah ada, training dilanjutkan dari epoch berikutnya."""
+    Bila `ckpt` (Path) diberikan, keadaan lengkap (model, optimizer, scaler, epoch, RNG) disimpan tiap akhir
+    epoch dan bobot terbaik di `ckpt.best.pt`; bila berkasnya sudah ada, training dilanjutkan dari epoch berikutnya.
+    Tanpa `ckpt` bobot terbaik disimpan di RAM (hanya untuk model kecil / tes)."""
     tc = {**DEFAULT_TRAIN, **cfg.get("train", {})}
     set_seed(seed)
     dev = data.device
-    data.fit_norm(tr)
-    model = build_model(cfg, data).to(dev)
-    groups = model.param_groups(tc) if hasattr(model, "param_groups") else model.parameters()
-    opt = torch.optim.Adam(groups, lr=tc["lr"], weight_decay=tc["weight_decay"])
-    scaler = torch.amp.GradScaler("cuda", enabled=tc["amp"] and dev.type == "cuda")
+    model = build_model(cfg).to(dev)
+    opt = make_optimizer(model, tc)
+    on, dtype = _amp(tc, dev)
+    scaler = torch.amp.GradScaler("cuda", enabled=on and dtype == torch.float16)
     loss_fn = nn.CrossEntropyLoss()
     gen = torch.Generator(device="cpu").manual_seed(seed)
     tr_t = torch.as_tensor(np.array(tr))
     n_epochs = epochs if va is None else tc["max_epochs"]
     best, log, start = (-1.0, 0, None), [], 1
+    best_path = None if ckpt is None else ckpt.with_name(ckpt.stem + ".best.pt")
     if ckpt is not None and ckpt.exists():
-        st = torch.load(ckpt, map_location=dev, weights_only=False)
+        st = torch.load(ckpt, map_location=dev, weights_only=False)   # langsung ke GPU, per tensor
         model.load_state_dict(st["model"])
         opt.load_state_dict(st["opt"])
         scaler.load_state_dict(st["scaler"])
         gen.set_state(st["gen"].cpu())
         _set_rng_state(st["rng"])
         best, log, start = st["best"], st["log"], st["epoch"] + 1
-        print(f"  lanjut dari {ckpt.name} epoch {st['epoch']}")
+        del st
+        torch.cuda.empty_cache()
+        print(f"  lanjut dari {ckpt.name} epoch {start - 1}")
     for ep in range(start, n_epochs + 1):
+        t_ep = time.time()
         model.train()
         perm = tr_t[torch.randperm(len(tr_t), generator=gen)].to(dev)
+        batches = torch.split(perm, tc["batch_size"])
         tot = 0.0
-        for c in torch.split(perm, tc["batch_size"]):
-            x, l, yb = data.batch(c)
-            with torch.autocast("cuda", enabled=scaler.is_enabled()):
-                loss = loss_fn(model(x, l), yb)
-            opt.zero_grad(set_to_none=True)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
+        opt.zero_grad(set_to_none=True)
+        for bi, c in enumerate(batches):
+            x, m, yb = data.batch(c)
+            with torch.autocast("cuda", dtype=dtype, enabled=on):
+                loss = loss_fn(model(x, m), yb)
+            scaler.scale(loss / tc["grad_accum"]).backward()
             tot += loss.item() * len(c)
+            if (bi + 1) % tc["grad_accum"] == 0 or bi + 1 == len(batches):
+                if tc["max_grad_norm"]:
+                    scaler.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), tc["max_grad_norm"])
+                scaler.step(opt)
+                scaler.update()
+                opt.zero_grad(set_to_none=True)
         row = {"epoch": ep, "train_loss": tot / len(tr)}
         stop = False
         if va is not None:
-            p = predict(model, data, va, tc["eval_batch"])
+            p = predict(model, data, va, tc["eval_batch"], tc)
             yv = data.y[torch.as_tensor(np.array(va), device=dev)].cpu().numpy()
             row.update(compute_metrics(yv, (p >= 0.5).astype(int), p))
             if row["macro_f1"] > best[0]:
-                best = (row["macro_f1"], ep, {k: v.detach().clone() for k, v in model.state_dict().items()})
+                if best_path is None:
+                    best = (row["macro_f1"], ep, {k: v.detach().cpu().clone() for k, v in model.state_dict().items()})
+                else:
+                    _atomic(best_path, lambda t: torch.save(model.state_dict(), t))
+                    best = (row["macro_f1"], ep, None)
             elif ep - best[1] >= tc["patience"]:
                 stop = True
         log.append(row)
+        print(f"  epoch {ep}: loss {row['train_loss']:.4f}, {time.time() - t_ep:.0f}s"
+              + (f", val macro-F1 {row['macro_f1']:.4f}" if va is not None else ""), flush=True)
         if stop:
             break
-        if ckpt is not None and ep < n_epochs:
-            st = {"epoch": ep, "model": model.state_dict(), "opt": opt.state_dict(), "scaler": scaler.state_dict(),
-                  "gen": gen.get_state(), "rng": _rng_state(), "best": best, "log": log}
-            _atomic(ckpt, lambda t: torch.save(st, t))
+        if ckpt is not None and tc["checkpoint"] and ep < n_epochs:
+            _save_checkpoint(ckpt, {"epoch": ep, "model": model.state_dict(), "opt": opt.state_dict(),
+                                    "scaler": scaler.state_dict(), "gen": gen.get_state(), "rng": _rng_state(),
+                                    "best": best, "log": log})
     if va is not None:
-        model.load_state_dict(best[2])
+        if best_path is None:
+            model.load_state_dict(best[2])
+        else:
+            del opt                       # bebaskan state optimizer di GPU sebelum memuat bobot terbaik
+            torch.cuda.empty_cache()
+            model.load_state_dict(torch.load(best_path, map_location=dev))
         return model, best[1], log
     return model, n_epochs, log
 
@@ -243,6 +224,7 @@ def run_unit(run_dir, key, fit):
         _atomic(pred_p, lambda t: pred.to_csv(t, index=False))
         _atomic(meta_p, lambda t: t.write_text(json.dumps(meta, indent=1, default=float), encoding="utf-8"))
         ckpt.unlink(missing_ok=True)
+        ckpt.with_name(ckpt.stem + ".best.pt").unlink(missing_ok=True)
     pred = pd.read_csv(pred_p, dtype={"source_id": str, "item": str, "fold": str})
     return pred, json.loads(meta_p.read_text(encoding="utf-8"))
 
@@ -258,13 +240,13 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     y = get_labels(task, index)
-    data = make_data(cfg, feats, y, device)
+    data = FbankData(*feats, y, device)
     rows, preds, summaries = [], {"cv": [], "test": [], "ligo": []}, []
 
     def fit(tr, te, seed, va=None, epochs=None):
         def _fit(ckpt):
             model, ep, log = train_model(cfg, data, tr, seed, va=va, epochs=epochs, ckpt=ckpt)
-            return make_pred(index, te, y, predict(model, data, te, tc["eval_batch"]), seed), {"epochs": ep, "history": log}
+            return make_pred(index, te, y, predict(model, data, te, tc["eval_batch"], tc), seed), {"epochs": ep, "history": log}
         return _fit
 
     for seed in seeds:
