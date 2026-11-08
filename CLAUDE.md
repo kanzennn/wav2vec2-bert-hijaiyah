@@ -1,10 +1,10 @@
-# CLAUDE.md — TA: Klasifikasi Sifat Huruf Hijaiyah (versi 4, berdiri sendiri)
+# CLAUDE.md — TA: Klasifikasi Sifat Huruf Hijaiyah (versi 5, berdiri sendiri)
 
 Panduan untuk Claude Code di repo ini. Baca seluruhnya sebelum mengubah kode. Dokumen ini menggantikan semua versi CLAUDE.md sebelumnya; abaikan instruksi lama jika ada di riwayat atau berkas lain. Pemilik: Faiz Elfahad Kurniawan (Informatika, Telkom University). Balas dan beri komentar penjelasan dalam Bahasa Indonesia informal; nama variabel, fungsi, dan commit message dalam bahasa Inggris.
 
 ## 0. Konteks dan hal yang berubah
 
-TA ini membandingkan enam model untuk **klasifikasi sifat huruf (sifat al-huruf) hijaiyah** dari rekaman pelafalan pendek. Repo ini mungkin masih berisi hasil lama dari konsep **identifikasi huruf (36 kelas item)**. Konsep itu sudah ditinggalkan:
+TA ini berjudul **"Peningkatan Klasifikasi Sifat Huruf Hijaiyah Menggunakan Wav2Vec2-BERT"**. TA ini mengukur seberapa besar **peningkatan** kinerja **klasifikasi sifat huruf (sifat al-huruf) hijaiyah** dari rekaman pelafalan pendek ketika memakai model pretrained Wav2Vec2-BERT yang di-fine-tune dibandingkan baseline XGBoost dengan fitur MFCC. Hanya **dua model** yang dipakai; cakupan sudah sengaja dikecilkan atas arahan dosen pembimbing. Jangan menambah model lain (SVM, Random Forest, CNN, CRNN, wav2vec 2.0 beku) tanpa persetujuan user. Repo ini mungkin masih berisi hasil lama dari konsep **identifikasi huruf (36 kelas item)**. Konsep itu sudah ditinggalkan:
 
 - Label target sekarang adalah **sifat huruf** (biner), bukan nomor item.
 - Yang dipakai adalah **Data Benar dan Data Salah**, karena kontras benar-salah itulah yang membuat sifat dapat diklasifikasi.
@@ -15,13 +15,16 @@ Sebelum mengubah apa pun, lakukan langkah 7.1 (inventarisasi) dan tunjukkan renc
 
 ## 1. Tujuan proyek
 
-| Kelompok | Model | Masukan |
+| Peran | Model | Masukan |
 |---|---|---|
-| Klasik | SVM (RBF), Random Forest, XGBoost | ringkasan MFCC (mean + std per koefisien) |
-| Deep learning | CNN, CRNN | Mel spectrogram (log-mel, dB) |
-| Pretrained | wav2vec 2.0 (mode beku dan fine-tune) | sinyal mentah 16 kHz |
+| Baseline | XGBoost | ringkasan MFCC (mean + std per koefisien, termasuk delta dan delta-delta) |
+| Model usulan | Wav2Vec2-BERT, fine-tune seluruh lapisan, kepala klasifikasi dua kelas | sinyal 16 kHz; log-mel filterbank dihitung oleh feature extractor bawaan checkpoint (jangan dihitung manual) |
 
-Pertanyaan penelitian: (1) model mana yang paling baik mengklasifikasi tiap sifat pada responden yang tidak pernah dilihat, (2) seberapa besar pengaruh jenis fitur (ablasi MFCC vs Mel spectrogram), (3) sifat dan kondisi mana yang paling sulit (per sifat, per item, per harakat).
+Cadangan bila GPU tidak cukup: XLS-R-300M (`facebook/wav2vec2-xls-r-300m`). Jangan beralih ke cadangan tanpa memberi tahu user dan mencatatnya di `reports/CHANGELOG.md`. Checkpoint Wav2Vec2-BERT yang dipakai (misalnya `facebook/w2v-bert-2.0`) harus dikonfirmasi user lebih dulu.
+
+Pertanyaan penelitian: (1) seberapa besar peningkatan macro-F1 dan akurasi Wav2Vec2-BERT terhadap XGBoost pada tiap sifat, pada responden yang tidak pernah dilihat; (2) pada sifat mana peningkatannya paling besar dan paling kecil; (3) sifat dan kondisi mana yang paling sulit (per item dan per harakat).
+
+**Peningkatan** = macro-F1 Wav2Vec2-BERT dikurangi macro-F1 XGBoost, pada data uji dan fold yang sama, per sifat. **XGBoost harus dilatih ulang pada split ini.** Jangan membandingkan langsung dengan angka penelitian Azis & Lestari (2023): mereka memakai 12 label, akurasi sebagai metrik, dan split 15+15 latih / 5+5 uji, sedangkan TA ini memakai tiga sifat, macro-F1, dan split bawaan dataset 16+16 / 4+4.
 
 Di luar lingkup: perangkat keras ESP32 dan mikrofon, identifikasi huruf 36 kelas, dan pembuatan aplikasi.
 
@@ -93,6 +96,7 @@ Dua belas variabel mencakup 18 sifat (rujukan Al-Hafiz, 2014): S1 jahr/hams, S2 
 
 - Arti akhiran varian (`i`, `ie`, `ik`, `t`).
 - Apakah responden `benar-N` dan `salah-N` orang yang sama. Dataset memisahkan keduanya di split (uji benar-2, 9, 12, 13 dan salah-2, 4, 10, 11), jadi percayai split bawaan, tetapi catat asumsi ini di `reports/data_audit.md`.
+- Sudah diverifikasi dari metadata: tiap `responden` hanya ada di satu fold dan satu split (irisan responden latih dan uji kosong); 40 responden menjadi 37 `grup_cv` (`benar-8_18_19` dan `salah-13_15` digabung). Ulangi verifikasi ini di data audit.
 
 ## 3. Target klasifikasi
 
@@ -106,7 +110,7 @@ Tahap utama (wajib), sama dengan artikel dataset:
 
 Tahap tambahan (opsional, hanya setelah tahap utama selesai dan user setuju): sifat lain hanya bila label dan konvensi Data Salah-nya jelas dan tersedia. Catat alasan bila dilewati.
 
-- Satu model dilatih **per sifat**. Untuk CNN, CRNN, dan wav2vec 2.0 boleh ada varian multi-task tiga kepala, tapi baseline yang dilaporkan tetap per sifat dan keduanya dilaporkan terpisah.
+- Satu model dilatih **per sifat**, untuk XGBoost maupun Wav2Vec2-BERT. Varian multi-task tiga kepala pada Wav2Vec2-BERT hanya boleh dikerjakan bila user menyetujui; baseline yang dilaporkan tetap per sifat dan hasil multi-task dilaporkan terpisah.
 - Data: seluruh 21.591 rekaman. Tambahkan kolom `is_correct` (1 = benar, 0 = salah) di indeks dan simpan di prediksi untuk analisis, tetapi **jangan** jadikan `is_correct` sebagai fitur.
 - Tulis `get_label(task, row)` yang hanya membaca kolom `y_*` dari metadata, dengan unit test konsistensi terhadap `label_per_huruf.csv` (lihat 2.3).
 
@@ -126,11 +130,11 @@ Tambahkan `tests/test_no_leakage.py`: gagal bila ada `grup_cv` di dua split atau
 
 1. **Pengumpulan data:** indeks 21.591 berkas, cocokkan dengan metadata (berkas hilang atau berlebih dilaporkan), audit kualitas (rusak, kosong, durasi ekstrem). Buat `reports/outlier_durasi.csv` untuk rekaman di bawah 0,3 detik dan di atas 2 detik; **jangan membuang tanpa persetujuan user**.
 2. **Pra-pemrosesan (sama untuk semua model):** mono, resample 16 kHz, trim hening dengan ambang energi, normalisasi amplitudo, lalu pad atau potong ke panjang tetap **sekitar 2,0 detik (32.000 sampel)**. Putuskan nilai akhirnya dari distribusi durasi data latih setelah trim (persentil 99), catat di `reports/data_audit.md`.
-3. **Ekstraksi fitur:** MFCC (jendela 25 ms, geser 10 ms, statis + delta + delta-delta, diringkas mean + std) untuk model klasik; Mel spectrogram (sekitar 64 pita, log/dB) untuk CNN dan CRNN; sinyal mentah 16 kHz untuk wav2vec 2.0.
+3. **Ekstraksi fitur:** MFCC (jendela 25 ms, geser 10 ms, statis + delta + delta-delta, diringkas mean + std) untuk XGBoost; sinyal 16 kHz untuk Wav2Vec2-BERT, yang menghitung fitur log-mel filterbank lewat feature extractor bawaan checkpoint.
 4. **Pembagian data:** baca split dan fold dari metadata, simpan ke `data/splits/*.csv` bersama lipatan leave-item-group-out.
-5. **Augmentasi (hanya latih):** time stretch 0,9 sampai 1,1; pitch shift 1 sampai 2 semiton; noise SNR sedang; time shift sekitar 100 ms; SpecAugment untuk model Mel. Peringatan: pitch shift dan time stretch berlebihan dapat mengubah sifat artikulasi (misalnya jahr/hams). Uji lewat ablasi (dengan vs tanpa) di validasi dan nonaktifkan yang menurunkan skor.
-6. **Pelatihan:** SVM RBF, Random Forest, XGBoost, CNN (blok conv-BN-ReLU-pool), CRNN (CNN + 1 sampai 2 lapis GRU/LSTM), wav2vec 2.0 beku dan fine-tune. Loss cross-entropy (class weight bila perlu). Deep learning: Adam, early stopping di validasi.
-7. **Pengujian dan evaluasi (per sifat per model):** accuracy, precision, recall, F1, **macro-F1 sebagai metrik utama**, AUC-ROC. Skor terpisah untuk subset Data Benar dan Data Salah. Validasi silang 5-fold dari fold 1 sampai 5, laporkan mean +- std. Ablasi MFCC vs Mel pada model yang bisa menerima keduanya.
+5. **Augmentasi (hanya latih):** time stretch 0,9 sampai 1,1; pitch shift 1 sampai 2 semiton; noise SNR sedang; time shift sekitar 100 ms; masking rentang waktu opsional saat fine-tune Wav2Vec2-BERT. Peringatan: pitch shift dan time stretch berlebihan dapat mengubah sifat artikulasi (misalnya jahr/hams). Uji lewat ablasi (dengan vs tanpa) di validasi dan nonaktifkan yang menurunkan skor.
+6. **Pelatihan:** XGBoost (hiperparameter: laju belajar, kedalaman, jumlah pohon, dipilih di validasi) dan Wav2Vec2-BERT fine-tune seluruh lapisan dengan kepala klasifikasi dua kelas (AdamW, laju belajar kecil, cross-entropy dengan class weight bila perlu, early stopping di validasi).
+7. **Pengujian dan evaluasi (per sifat per model):** accuracy, precision, recall, F1, **macro-F1 sebagai metrik utama**, AUC-ROC. Skor terpisah untuk subset Data Benar dan Data Salah. Validasi silang 5-fold dari fold 1 sampai 5, laporkan mean +- std. Hitung peningkatan per sifat per fold (macro-F1 Wav2Vec2-BERT dikurangi macro-F1 XGBoost) dan laporkan mean +- std.
 8. **Analisis hasil:** confusion matrix 2x2 per sifat per model, tingkat kesalahan per item dan per harakat (termasuk varian), item yang paling sering salah, dan tabel model terbaik per sifat.
 
 Cek kewajaran: bila baseline sederhana (kelas mayoritas) mendekati model Anda, atau skor mendekati 100% pada split per responden, curigai kebocoran atau label trivial dan periksa dulu sebelum melapor.
@@ -145,8 +149,8 @@ data/interim/       # audio terproses dan cache fitur
 data/splits/        # split latih/uji + fold 1-5 + leave-item-group-out
 src/ta/
   data/             # index, audit, labels (get_label), preprocess, split, augment
-  features/         # mfcc.py, melspec.py, raw.py
-  models/           # classical.py, cnn.py, crnn.py, wav2vec.py
+  features/         # mfcc.py, raw.py
+  models/           # xgboost_model.py, wav2vec_bert.py
   train.py          # python -m ta.train --config configs/xxx.yaml --task S1
   evaluate.py       # metrik, confusion matrix, ablasi, analisis per item/harakat
 tests/
@@ -161,17 +165,17 @@ runs/archive_letter_id/
 1. **Ekstrak data dulu** (bagian 2), lalu **inventarisasi.** Sebelum menulis kode baru: (a) baca struktur repo dan hasil lama, (b) baca ketiga berkas di `data/labels/` dan cocokkan dengan bagian 2 (jumlah baris, kolom, sebaran label), (c) tulis ringkasan di `reports/label_inventory.md`, (d) tampilkan rencana perubahan ke user dan tunggu konfirmasi. Hentikan dan tanya bila ada yang berbeda dari bagian 2.
 2. Arsipkan hasil lama (bagian 0), lalu tulis `get_label` dan unit test-nya.
 3. Jalankan data audit baru; hentikan dan tanya bila jumlah menyimpang (harus 10.791 + 10.800 = 21.591).
-4. Bangun baseline termurah dulu: MFCC + SVM untuk S1, S3, T2 end-to-end, lolos test anti-leakage. Baru lanjut ke model lain, satu kelompok per langkah (klasik, CNN/CRNN, wav2vec 2.0). Jalankan `--smoke` sebelum training penuh.
+4. Bangun baseline termurah dulu: MFCC + XGBoost untuk S1, S3, T2 end-to-end, lolos test anti-leakage. Baru lanjut ke Wav2Vec2-BERT. Jalankan `--smoke` sebelum training penuh.
 5. Setelah tiap run, tambahkan satu baris ke `reports/results.csv`: sifat, model, fitur, mode, seed, fold, accuracy, macro-F1, precision, recall, F1, AUC. Simpan prediksi (dengan `item`, `harakat`, `is_correct`) dan confusion matrix.
-6. Reproducibility: satu `seed` di config untuk python, numpy, torch; model deep learning dari minimal 3 seed. Tiap run menyimpan salinan config, metrik, prediksi, dan git commit hash. Cache fitur ke disk. Deteksi GPU otomatis.
+6. Reproducibility: satu `seed` di config untuk python, numpy, torch; Wav2Vec2-BERT dari minimal 3 seed. Tiap run menyimpan salinan config, metrik, prediksi, dan git commit hash. Cache fitur ke disk. Deteksi GPU otomatis.
 7. Jangan mengarang angka; semua angka laporan berasal dari `runs/`. Eksperimen yang gagal atau tidak dijalankan ditulis apa adanya.
-8. Jangan mengunduh model atau data dari internet tanpa izin. Untuk wav2vec 2.0, tanya user checkpoint-nya (mis. `facebook/wav2vec2-base`) dan catat versinya.
+8. Jangan mengunduh model atau data dari internet tanpa izin. Untuk Wav2Vec2-BERT, tanya user checkpoint-nya (mis. `facebook/w2v-bert-2.0`) dan catat versinya.
 9. Commit kecil dan sering, pesan dalam bahasa Inggris. Jangan commit `data/raw/`, checkpoint, atau berkas lebih dari 50 MB.
 
 ## 8. Keluaran untuk laporan TA
 
-- `reports/results.csv` dan tabel perbandingan enam model per sifat (mean +- std antar-fold).
-- `reports/ablation_features.csv` (MFCC vs Mel) dan ablasi augmentasi.
+- `reports/results.csv` dan tabel perbandingan dua model per sifat (mean +- std antar-fold), beserta kolom peningkatan macro-F1.
+- Ablasi augmentasi (dengan vs tanpa).
 - Confusion matrix 2x2 per sifat per model, plus tabel kesalahan per item dan per harakat.
 - Hasil leave-item-group-out, terpisah dari skor utama.
 - `reports/label_inventory.md`, `reports/data_audit.md`, `reports/outlier_durasi.csv`, `reports/CHANGELOG.md`.
@@ -181,4 +185,6 @@ runs/archive_letter_id/
 
 - Nilai parameter di bagian 5 adalah rencana awal, bukan hasil; ubah bila validasi menunjukkan lain dan catat alasannya.
 - S1, S3, T2 mengikuti artikel penulis dataset agar dapat dibandingkan.
+- Alasan memilih Wav2Vec2-BERT: pada shared task Iqra'Eval 2025 (penilaian pelafalan Al-Qur'an), sistem terbaik memakai Wav2Vec2-BERT (F1 0,4726) dan XLS-R-1B (0,4650). Itu tugas deteksi salah lafal pada ayat, bukan klasifikasi sifat huruf, jadi ini argumen pemilihan, bukan jaminan hasil. Wav2Vec2-BERT belum pernah diuji pada klasifikasi sifat huruf hijaiyah menurut kajian pustaka yang ada.
+- Jangan melaporkan peningkatan terhadap angka penelitian lain; hanya terhadap XGBoost yang dilatih ulang pada split yang sama.
 - Karena label ditentukan per item, kemampuan generalisasi ke item baru harus dibuktikan lewat leave-item-group-out; sebutkan sebagai keterbatasan bila skornya jauh lebih rendah dari skor utama.
