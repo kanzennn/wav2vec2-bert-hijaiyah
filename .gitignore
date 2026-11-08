@@ -12,7 +12,7 @@ __pycache__/
 .venv/
 
 # run smoke tidak perlu di-commit
-runs/*_smoke/
+runs/**/*_smoke/
 *.egg-info/
 .pytest_cache/
 
