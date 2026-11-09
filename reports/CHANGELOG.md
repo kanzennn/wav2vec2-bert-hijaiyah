@@ -67,3 +67,15 @@
   Smoke test penuh belum lolos; perlu GPU dan RAM yang tidak dipakai aplikasi lain.
 - Audit: cek responden (40 responden menjadi 37 `grup_cv`, tidak ada responden di dua fold/split) ditambahkan ke `reports/data_audit.md` dan tes anti-leakage.
 - `python -m ta.evaluate --improvement` menulis `reports/improvement.csv` (macro-F1 dan akurasi Wav2Vec2-BERT dikurangi XGBoost per sifat, per fold).
+
+## 2026-11-09 — Smoke Wav2Vec2-BERT lolos; protokol C dipilih user
+
+- Smoke S1 (subset 10%, seed 42, 2 epoch) lolos CV, uji, dan 6 fold LIGO setelah perbaikan: model tiap unit dihapus
+  (`del` + `gc.collect()` + `empty_cache()`) sebelum unit berikutnya memuat backbone baru. Sebelumnya run mati di LIGO fold 1 dengan
+  `OSError 1455: paging file too small` (commit memori Windows habis). Memori proses sekarang stabil sekitar 3,5 GB antar-unit (dicatat di log).
+- Waktu terukur sekitar 0,035–0,055 s per rekaman per epoch saat mesin tidak sibuk; epoch melambat 3–8x saat RAM sesak (swap).
+  Perkiraan protokol penuh (3 sifat x 3 seed x CV+uji+LIGO, maks 10 epoch) sekitar 115 jam, jadi tidak realistis.
+- **Keputusan user (2026-11-09): protokol C**, perkiraan sekitar 40 jam:
+  `max_epochs` 6 (dari 10), `patience` 2 (dari 3); CV fold 1-5 hanya seed 42 (`cv_seeds`); uji akhir fold 0 tetap seed 42, 43, 44;
+  LIGO hanya seed 42 (`ligo_seeds`). Jumlah epoch untuk uji dan LIGO semua seed = median epoch terbaik CV seed 42.
+  Konsekuensi: peningkatan per fold CV memakai satu seed Wav2Vec2-BERT (XGBoost juga satu seed); variasi antar-seed hanya terlihat di data uji.

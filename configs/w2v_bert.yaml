@@ -4,6 +4,8 @@
 name: w2v_bert
 seed: 42               # dipakai untuk subset --smoke
 seeds: [42, 43, 44]
+cv_seeds: [42]        # protokol C (2026-11-09): CV hanya seed 42 demi waktu; uji akhir tetap 3 seed
+ligo_seeds: [42]      # LIGO hanya seed 42
 n_jobs: 8
 
 preprocess:            # sama untuk semua model
@@ -35,8 +37,8 @@ train:
   optimizer: adamw8bit # AdamW 8-bit (bitsandbytes) supaya muat di GPU 8 GB
   max_grad_norm: 1.0
   amp_dtype: bf16
-  max_epochs: 10
-  patience: 3          # early stopping di macro-F1 fold validasi
+  max_epochs: 6        # protokol C (sebelumnya 10)
+  patience: 2          # early stopping di macro-F1 fold validasi
   eval_batch: 32
   checkpoint: true     # checkpoint per epoch untuk --resume
 

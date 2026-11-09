@@ -268,21 +268,32 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
             return make_pred(index, te, y, prob, seed), {"epochs": ep, "history": log}
         return _fit
 
+    # Seed untuk CV dan LIGO bisa dibatasi (config cv_seeds / ligo_seeds) demi waktu; uji akhir selalu semua seed.
+    cv_seeds = [s for s in cfg.get("cv_seeds", seeds) if s in seeds] or seeds[:1]
+    ligo_seeds = [s for s in cfg.get("ligo_seeds", seeds) if s in seeds]
+    final_epochs = None
     for seed in seeds:
         cfg_s = {**cfg, "seed": seed}
-        # 1. CV + early stopping
-        t0, hist, best_epochs = time.time(), [], []
-        for f, tr, va in cv_folds(index):
-            p, meta = run_unit(run_dir, f"{task}_seed{seed}_cv_{f}", fit(tr, va, seed, va=va))
-            hist += [{"seed": seed, "fold": f, **r} for r in meta["history"]]
-            best_epochs.append(meta["epochs"])
-            preds["cv"].append(p)
-            rows += result_rows(task, cfg_s, "cv", f, subset_metrics(p), run_id)
-        pd.DataFrame(hist).to_csv(run_dir / f"{task}_seed{seed}_cv_history.csv", index=False)
-        final_epochs = max(1, int(np.median(best_epochs)))
-        cv_f1 = [r["macro_f1"] for r in rows if r["seed"] == seed and r["mode"] == "cv" and r["subset"] == "all"]
-        print(f"[{task} seed {seed}] CV {time.time() - t0:.0f}s, epoch terbaik {best_epochs} -> {final_epochs}; "
-              f"macro-F1 {np.mean(cv_f1):.4f} +- {np.std(cv_f1, ddof=1):.4f}")
+        t0, summ = time.time(), {"seed": seed}
+        # 1. CV + early stopping (jumlah epoch akhir = median epoch terbaik antar-fold, dari seed CV pertama)
+        if seed in cv_seeds:
+            hist, best_epochs = [], []
+            for f, tr, va in cv_folds(index):
+                p, meta = run_unit(run_dir, f"{task}_seed{seed}_cv_{f}", fit(tr, va, seed, va=va))
+                hist += [{"seed": seed, "fold": f, **r} for r in meta["history"]]
+                best_epochs.append(meta["epochs"])
+                preds["cv"].append(p)
+                rows += result_rows(task, cfg_s, "cv", f, subset_metrics(p), run_id)
+            pd.DataFrame(hist).to_csv(run_dir / f"{task}_seed{seed}_cv_history.csv", index=False)
+            if final_epochs is None:
+                final_epochs = max(1, int(np.median(best_epochs)))
+            cv_f1 = [r["macro_f1"] for r in rows if r["seed"] == seed and r["mode"] == "cv" and r["subset"] == "all"]
+            summ.update(cv_best_epochs=best_epochs, cv_macro_f1_mean=float(np.mean(cv_f1)))
+            print(f"[{task} seed {seed}] CV {time.time() - t0:.0f}s, epoch terbaik {best_epochs} -> {final_epochs}; "
+                  f"macro-F1 {np.mean(cv_f1):.4f} +- {np.std(cv_f1, ddof=1):.4f}", flush=True)
+        if final_epochs is None:
+            raise RuntimeError("seed CV pertama harus diproses sebelum seed lain (urutkan cv_seeds di depan seeds)")
+        summ["final_epochs"] = final_epochs
 
         # 2. uji akhir (fold 0), sekali per seed
         tr, te = train_test_indices(index)
@@ -293,28 +304,33 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
         cm = confusion(p)
         cm.to_csv(run_dir / f"{task}_seed{seed}_cm_test.csv")
         plot_confusion(cm, f"{task} {cfg['model']['type']}+{cfg['features']['type']} seed {seed} (uji)", run_dir / f"{task}_seed{seed}_cm_test.png")
+        summ["test"] = test_m
+        msg = (f"[{task} seed {seed}] uji macro-F1 {test_m['all']['macro_f1']:.4f} (benar {test_m['benar']['macro_f1']:.4f}, "
+               f"salah {test_m['salah']['macro_f1']:.4f})")
 
         # 3. leave-item-group-out
-        lp = []
-        for k, tr_k, te_k in ligo_folds(index):
-            if len(te_k) == 0:
-                continue
-            pk, _ = run_unit(run_dir, f"{task}_seed{seed}_ligo_{k}", fit(tr_k, te_k, seed, epochs=final_epochs))
-            pk = pk.assign(ligo_fold=k)
-            lp.append(pk)
-            rows += result_rows(task, cfg_s, "ligo", k, subset_metrics(pk), run_id)
-        lp = pd.concat(lp)
-        preds["ligo"].append(lp)
-        ligo_m = subset_metrics(lp)
-        rows += result_rows(task, cfg_s, "ligo", "pooled", ligo_m, run_id)
-        confusion(lp).to_csv(run_dir / f"{task}_seed{seed}_cm_ligo.csv")
-        print(f"[{task} seed {seed}] uji macro-F1 {test_m['all']['macro_f1']:.4f} (benar {test_m['benar']['macro_f1']:.4f}, "
-              f"salah {test_m['salah']['macro_f1']:.4f}); LIGO {ligo_m['all']['macro_f1']:.4f}; total {time.time() - t0:.0f}s")
-        summaries.append({"seed": seed, "cv_best_epochs": best_epochs, "final_epochs": final_epochs,
-                          "cv_macro_f1_mean": float(np.mean(cv_f1)), "test": test_m, "ligo_pooled": ligo_m})
+        if seed in ligo_seeds:
+            lp = []
+            for k, tr_k, te_k in ligo_folds(index):
+                if len(te_k) == 0:
+                    continue
+                pk, _ = run_unit(run_dir, f"{task}_seed{seed}_ligo_{k}", fit(tr_k, te_k, seed, epochs=final_epochs))
+                pk = pk.assign(ligo_fold=k)
+                lp.append(pk)
+                rows += result_rows(task, cfg_s, "ligo", k, subset_metrics(pk), run_id)
+            lp = pd.concat(lp)
+            preds["ligo"].append(lp)
+            ligo_m = subset_metrics(lp)
+            rows += result_rows(task, cfg_s, "ligo", "pooled", ligo_m, run_id)
+            confusion(lp).to_csv(run_dir / f"{task}_seed{seed}_cm_ligo.csv")
+            summ["ligo_pooled"] = ligo_m
+            msg += f"; LIGO {ligo_m['all']['macro_f1']:.4f}"
+        print(f"{msg}; total {time.time() - t0:.0f}s", flush=True)
+        summaries.append(summ)
 
     for mode, ps in preds.items():
-        pd.concat(ps).to_csv(run_dir / f"{task}_predictions_{mode}.csv", index=False)
+        if ps:
+            pd.concat(ps).to_csv(run_dir / f"{task}_predictions_{mode}.csv", index=False)
     # tabel kesalahan dari gabungan semua seed (tingkat kesalahan = rata-rata antar-seed)
     for name, tab in zip(("by_item", "by_harakat", "by_item_harakat_kategori"), error_tables(pd.concat(preds["test"]))):
         tab.round(4).to_csv(run_dir / f"{task}_errors_test_{name}.csv", index=False)

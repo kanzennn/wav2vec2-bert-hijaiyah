@@ -52,3 +52,23 @@ def test_improvement_per_fold():
     imp = evaluate.improvement(pd.DataFrame(rows)).iloc[0]
     assert imp["n_fold"] == 2
     assert abs(imp["delta_macro_f1"] - 0.125) < 1e-9          # (0.15 + 0.10) / 2
+
+
+def test_cv_and_ligo_seed_subsets(tmp_path):
+    """Protokol C: CV dan LIGO hanya seed pertama, uji akhir semua seed (memakai epoch dari CV seed pertama)."""
+    from ta.data.index import build_index
+    from ta.train import smoke_subset
+    from ta.train_dl import run_task_dl
+    index = smoke_subset(build_index(), 0.01, 0)
+    rng = np.random.default_rng(0)
+    feats = (rng.normal(size=(len(index), 10, 160)).astype(np.float16), rng.integers(3, 11, size=len(index)))
+    cfg = {"name": "t", "seed": 1, "seeds": [1, 2], "cv_seeds": [1], "ligo_seeds": [1],
+           "features": {"type": "w2v_bert_fbank"},
+           "model": {"type": "w2v_bert", "params": {"random_init_config": TINY, "gradient_checkpointing": False}},
+           "train": {"batch_size": 16, "grad_accum": 1, "optimizer": "adamw", "amp_dtype": "none", "max_epochs": 1,
+                     "patience": 1}}
+    rows, summ = run_task_dl("S1", cfg, index, feats, tmp_path, False, "rid")
+    modes = pd.DataFrame(rows).query("subset == 'all'").groupby(["mode", "seed"]).size().to_dict()
+    assert set(modes) == {("cv", 1), ("test", 1), ("test", 2), ("ligo", 1)}
+    assert [s["final_epochs"] for s in summ["seeds"]] == [1, 1]
+    assert "ligo_pooled" not in summ["seeds"][1]
