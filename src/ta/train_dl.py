@@ -16,6 +16,7 @@ Jeda/lanjut: tiap unit (sifat, seed, cv/test/ligo, fold) disimpan ke run_dir/uni
 yang sedang dilatih di-checkpoint tiap epoch ke run_dir/checkpoints/. `python -m ta.train --resume <run_dir>`
 melewati unit yang sudah ada dan melanjutkan unit yang terpotong dari epoch terakhirnya.
 """
+import gc
 import json
 import os
 import random
@@ -202,6 +203,18 @@ def train_model(cfg, data, tr, seed, va=None, epochs=None, ckpt=None):
     return model, n_epochs, log
 
 
+def _log_memory(tag):
+    """Cetak pemakaian memori proses dan sistem, untuk memantau kebocoran antar-unit."""
+    try:
+        import psutil
+        proc, vm = psutil.Process().memory_info(), psutil.virtual_memory()
+        gpu = torch.cuda.memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
+        print(f"  [mem {tag}] proses RSS {proc.rss / 2**30:.1f} GB, private {getattr(proc, 'private', 0) / 2**30:.1f} GB, "
+              f"RAM bebas {vm.available / 2**30:.1f} GB, GPU {gpu:.2f} GB", flush=True)
+    except Exception:
+        pass
+
+
 def make_pred(index, te, y, prob, seed):
     from ta.train import PRED_COLUMNS
     p = index.loc[te, PRED_COLUMNS].copy()
@@ -245,8 +258,14 @@ def run_task_dl(task, cfg, index, feats, run_dir, smoke, run_id):
 
     def fit(tr, te, seed, va=None, epochs=None):
         def _fit(ckpt):
+            _log_memory("mulai unit")
             model, ep, log = train_model(cfg, data, tr, seed, va=va, epochs=epochs, ckpt=ckpt)
-            return make_pred(index, te, y, predict(model, data, te, tc["eval_batch"], tc), seed), {"epochs": ep, "history": log}
+            prob = predict(model, data, te, tc["eval_batch"], tc)
+            # bebaskan model sebelum unit berikutnya memuat backbone baru (RAM/commit Windows terbatas)
+            del model
+            gc.collect()
+            torch.cuda.empty_cache()
+            return make_pred(index, te, y, prob, seed), {"epochs": ep, "history": log}
         return _fit
 
     for seed in seeds:
