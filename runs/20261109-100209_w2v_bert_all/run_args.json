@@ -1,0 +1,73 @@
+{
+  "task": "all",
+  "smoke": false,
+  "git": {
+    "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+    "dirty": false
+  },
+  "resumes": [
+    {
+      "time": "20261110-013334",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261110-060548",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261115-020516",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261115-154247",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261116-180800",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261116-221922",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261117-075532",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261117-133447",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    },
+    {
+      "time": "20261117-163603",
+      "git": {
+        "commit": "699bb91a4b7a43599bc831385fe2db83a8635feb",
+        "dirty": false
+      }
+    }
+  ]
+}

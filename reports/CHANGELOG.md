@@ -79,3 +79,14 @@
   `max_epochs` 6 (dari 10), `patience` 2 (dari 3); CV fold 1-5 hanya seed 42 (`cv_seeds`); uji akhir fold 0 tetap seed 42, 43, 44;
   LIGO hanya seed 42 (`ligo_seeds`). Jumlah epoch untuk uji dan LIGO semua seed = median epoch terbaik CV seed 42.
   Konsekuensi: peningkatan per fold CV memakai satu seed Wav2Vec2-BERT (XGBoost juga satu seed); variasi antar-seed hanya terlihat di data uji.
+
+## 2026-11-18 — Run penuh Wav2Vec2-BERT selesai (protokol C)
+
+- Run `runs/20261109-100209_w2v_bert_all` selesai: 42 unit (3 sifat x [5 CV + 3 uji + 6 LIGO]), dijeda/dilanjutkan berkali-kali dari checkpoint.
+  Waktu per epoch sangat bervariasi (sekitar 10–69 menit); penyebab belum dipastikan (dugaan: VRAM hampir penuh sehingga driver memakai RAM sistem).
+- Epoch akhir (median epoch terbaik CV seed 42): S1 3, S3 3, T2 4.
+- `python -m ta.evaluate --improvement` -> `reports/improvement.csv`. Peningkatan macro-F1 (Wav2Vec2-BERT − XGBoost):
+  uji S1 +0,100, S3 +0,094, T2 +0,116 (Wav2Vec2-BERT rata-rata 3 seed); CV S1 +0,131 ± 0,073, S3 +0,127 ± 0,067, T2 +0,118 ± 0,035;
+  LIGO gabungan S1 +0,098, S3 +0,056, T2 +0,067.
+- Catatan: skor CV Wav2Vec2-BERT optimistis (epoch dipilih pada fold validasi yang sama); skor uji adalah angka utama.
+  Ablasi augmentasi belum dikerjakan.
