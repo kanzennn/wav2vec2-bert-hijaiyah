@@ -1,11 +1,12 @@
 # Ringkasan proses TA untuk penyusunan proposal
 
 Dokumen ini untuk Claude chat sebagai konteks mencicil proposal/laporan TA.
-Status per **16 November 2026, siang**. Semua angka diambil dari `reports/` dan `runs/` di repo; angka Wav2Vec2-BERT masih **sementara** (training belum selesai).
+Status per **18 November 2026**. Semua angka diambil dari `reports/` dan `runs/` di repo. Training Wav2Vec2-BERT **sudah selesai** (42/42 unit); angka di §8 final, dari `reports/improvement.csv`.
+Proposal hanya sampai **Bab 3**; hasil di §8 boleh dipakai sebagai "hasil awal/eksperimen pendahuluan" bila pembimbing meminta, bukan sebagai Bab 4.
 
 ## Aturan untuk Claude chat
 
-1. **Jangan mengarang angka.** Pakai hanya angka di dokumen ini. Bagian yang belum ada hasilnya (T2 Wav2Vec2-BERT, ablasi augmentasi) tulis sebagai `[menunggu hasil]`.
+1. **Jangan mengarang angka.** Pakai hanya angka di dokumen ini. Bagian yang belum ada hasilnya (ablasi augmentasi) tulis sebagai `[menunggu hasil]`.
 2. **Jangan membandingkan langsung dengan angka Azis & Lestari (2023).** Mereka memakai 12 label, akurasi, dan split 15+15 / 5+5. "Peningkatan" di TA ini hanya terhadap XGBoost yang dilatih ulang pada split yang sama.
 3. Sitasi yang disebut di sini wajib dicek ulang ke sumber aslinya (judul, tahun, venue) sebelum masuk daftar pustaka.
 4. Bahasa: Indonesia baku untuk proposal. Istilah teknis boleh dalam bahasa Inggris dan dicetak miring.
@@ -116,12 +117,12 @@ Ketiga sifat ini sama dengan yang dimodelkan penulis dataset. Kolom `is_correct`
   - Tanpa augmentasi.
 - **Early stopping (protokol C):**
   - Di CV, maksimum 6 epoch dengan *patience* 2 pada macro-F1 validasi; bobot epoch terbaik yang dipakai.
-  - Model untuk uji dan LIGO dilatih ulang pada seluruh data latih selama **median epoch terbaik CV**. S1 = 3, S3 = 3; T2 menunggu.
+  - Model untuk uji dan LIGO dilatih ulang pada seluruh data latih selama **median epoch terbaik CV**. S1 = 3, S3 = 3, T2 = 4.
   - Dengan cara ini data uji tidak pernah dipakai untuk memilih model.
 - **Seed:** CV dan LIGO memakai seed 42. Uji akhir memakai seed 42, 43, dan 44 untuk melihat variasi antar-seed.
 - **Perangkat:** satu laptop RTX 4060 Laptop 8 GB, RAM 24 GB, Windows.
-  - Sekitar 18–36 menit per epoch.
-  - Total run Wav2Vec2-BERT sekitar 3 hari: 42 unit = 3 sifat × (5 CV + 3 uji + 6 LIGO).
+  - Sekitar 10–69 menit per epoch (sangat bervariasi; dugaan VRAM hampir penuh sehingga driver memakai RAM sistem, belum dipastikan).
+  - Total run Wav2Vec2-BERT 9–18 November 2026 (banyak jeda): 42 unit = 3 sifat × (5 CV + 3 uji + 6 LIGO).
 - **Alasan memilih Wav2Vec2-BERT:**
   - Pada shared task Iqra'Eval 2025 (deteksi salah lafal ayat Al-Qur'an), sistem terbaik memakai Wav2Vec2-BERT (F1 0,4726), disusul XLS-R-1B (0,4650).
   - Itu tugas yang berbeda, jadi ini argumen pemilihan model, bukan jaminan hasil.
@@ -135,36 +136,42 @@ Ketiga sifat ini sama dengan yang dimodelkan penulis dataset. Kolom `is_correct`
 - **Analisis lanjutan:** confusion matrix 2×2 per sifat per model, tingkat kesalahan per item dan per harakat, dan item yang paling sering salah.
 - Ada baseline kelas mayoritas sebagai cek kewajaran (macro-F1 uji sekitar 0,33).
 
-## 8. Hasil sejauh ini
+## 8. Hasil (final, sumber `reports/improvement.csv` dan `reports/results.csv`)
 
-### 8.1 XGBoost (final)
+### 8.1 Perbandingan per sifat (macro-F1)
 
-| Sifat | CV macro-F1 (mean ± std) | Uji macro-F1 | LIGO macro-F1 (gabungan) |
+| Sifat | Model | CV fold 1–5 (mean ± std) | Uji fold 0 | AUC uji | LIGO (gabungan 6 lipatan) |
+|---|---|---|---|---|---|
+| S1 | XGBoost | 0,680 ± 0,022 | 0,689 | 0,763 | 0,624 |
+| S1 | Wav2Vec2-BERT | 0,811 ± 0,085 | 0,789 ± 0,019 (3 seed) | 0,864 | 0,722 |
+| S3 | XGBoost | 0,652 ± 0,036 | 0,668 | 0,743 | 0,617 |
+| S3 | Wav2Vec2-BERT | 0,780 ± 0,085 | 0,762 ± 0,010 (3 seed) | 0,852 | 0,673 |
+| T2 | XGBoost | 0,703 ± 0,048 | 0,662 | 0,725 | 0,611 |
+| T2 | Wav2Vec2-BERT | 0,821 ± 0,054 | 0,778 ± 0,019 (3 seed) | 0,844 | 0,678 |
+
+Baseline kelas mayoritas: macro-F1 uji sekitar 0,333 untuk ketiga sifat.
+Uji per seed (42 / 43 / 44): S1 0,798 / 0,801 / 0,766; S3 0,758 / 0,773 / 0,754; T2 0,770 / 0,800 / 0,764.
+
+### 8.2 Peningkatan (Wav2Vec2-BERT − XGBoost, macro-F1)
+
+| Sifat | Uji | CV (mean ± std antar-fold) | LIGO |
 |---|---|---|---|
-| S1 | 0,680 ± 0,022 | 0,688 | 0,624 |
-| S3 | 0,652 ± 0,036 | 0,668 | 0,617 |
-| T2 | 0,703 ± 0,048 | 0,662 | 0,611 |
+| S1 | +0,100 | +0,131 ± 0,073 | +0,098 |
+| S3 | +0,094 | +0,127 ± 0,067 | +0,056 |
+| T2 | +0,116 | +0,118 ± 0,035 | +0,067 |
 
-### 8.2 Wav2Vec2-BERT (SEMENTARA, run masih berjalan, 26 dari 42 unit)
-
-| Sifat | CV macro-F1 (seed 42) | Uji macro-F1 per seed | LIGO (gabungan, seed 42) |
-|---|---|---|---|
-| S1 | 0,811 ± 0,085 (fold: 0,687 / 0,767 / 0,901 / 0,840 / 0,861) | 0,798 / 0,801 / 0,766 → rata-rata 0,789 | 0,722 |
-| S3 | 0,780 ± 0,085 | 0,758 (seed 42); seed 43 dan 44 [menunggu] | 0,673 |
-| T2 | [menunggu] | [menunggu] | [menunggu] |
-
-- **Gambaran awal** (belum final; angka resmi akan keluar dari `reports/improvement.csv`): pada data uji, peningkatan sekitar +0,10 untuk S1 dan sekitar +0,09 untuk S3.
-- **LIGO** lebih rendah daripada skor uji pada kedua model. Penurunan S3 lebih besar daripada S1, jadi generalisasi ke huruf baru lebih sulit untuk isti'la.
+- Peningkatan pada data uji terbesar di T2 (qalqalah) dan terkecil di S3 (isti'la).
+- Pada LIGO peningkatan mengecil, terutama S3 dan T2. Per lipatan LIGO T2, peningkatan berkisar +0,01 sampai +0,13 (lipatan 1, 4, 5 hampir seri; 2, 3, 6 sekitar +0,10–0,13). Jadi sebagian keunggulan Wav2Vec2-BERT berasal dari huruf yang sudah dikenal saat latih.
 - **Catatan jujur:**
-  - Skor CV Wav2Vec2-BERT sedikit optimistis, karena epoch terbaik dipilih pada fold validasi yang sama. Skor uji fold 0 tidak punya masalah ini, jadi skor uji adalah angka utama.
-  - Variasi antar-seed cukup terasa. Contohnya S1 seed 44, yang skor Data Benar-nya 0,685, sementara seed lain di atas 0,81.
+  - Skor CV Wav2Vec2-BERT optimistis (epoch dipilih pada fold validasi yang sama); skor uji adalah angka utama.
+  - XGBoost satu seed; Wav2Vec2-BERT CV dan LIGO satu seed, uji tiga seed. Variasi antar-seed terasa (mis. S1 seed 44 skor Data Benar 0,685, seed lain di atas 0,81).
   - Fold 1 konsisten paling sulit untuk kedua model.
+  - Analisis per item/harakat sudah tersedia di `runs/` tetapi belum dirangkum.
 
 ## 9. Yang belum selesai
 
-- Sisa run Wav2Vec2-BERT (uji S3 seed 43–44 dan seluruh T2). Perkiraan selesai Selasa, 17 November 2026, sore.
-- `reports/improvement.csv`, tabel perbandingan akhir, confusion matrix, dan tabel kesalahan per item/harakat untuk Wav2Vec2-BERT.
 - **Ablasi augmentasi** (dengan vs tanpa) belum dikerjakan. Rencana augmentasinya: time stretch 0,9–1,1; pitch shift 1–2 semiton; noise SNR sedang; time shift sekitar 100 ms. Keputusannya menunggu pembimbing: dikerjakan penuh, dikerjakan terbatas, atau ditulis sebagai keterbatasan.
+- Rangkuman analisis kesalahan per item/harakat dan ringkasan akhir 1 halaman.
 - Pertanyaan terbuka ke penulis dataset:
   - Arti akhiran varian `i`, `ie`, `ik`, dan `t`.
   - Apakah responden benar-N dan salah-N adalah orang yang sama. Untuk sekarang split bawaan dipercaya; asumsi ini dicatat di `reports/data_audit.md`.
@@ -190,4 +197,4 @@ Ketiga sifat ini sama dengan yang dimodelkan penulis dataset. Kolom `is_correct`
   - *Fine-tuning* hemat memori: AdamW 8-bit (Dettmers dkk., 2022).
   - Semua sitasi wajib dicek.
 - **Bab 3 Metodologi:** urutan §2 → §5 → §4 → §6 → §7. Sertakan diagram alur: dataset → praproses → (MFCC → XGBoost) dan (fbank → Wav2Vec2-BERT) → evaluasi (CV, uji, LIGO) → analisis peningkatan.
-- **Bab 4 Hasil:** `[menunggu hasil final]`. Struktur: tabel per sifat per model, kolom peningkatan, subset benar/salah, LIGO, confusion matrix, dan analisis per item/harakat.
+- **Bab 4 Hasil (tidak termasuk proposal):** struktur: tabel per sifat per model, kolom peningkatan, subset benar/salah, LIGO, confusion matrix, dan analisis per item/harakat.
