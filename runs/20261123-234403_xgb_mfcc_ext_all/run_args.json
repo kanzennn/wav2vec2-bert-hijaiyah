@@ -1,0 +1,8 @@
+{
+  "task": "all",
+  "smoke": false,
+  "git": {
+    "commit": "03a0b29b1af4e58d66845a436f478aa0f0e82751",
+    "dirty": false
+  }
+}

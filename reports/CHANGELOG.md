@@ -90,3 +90,17 @@
   LIGO gabungan S1 +0,098, S3 +0,056, T2 +0,067.
 - Catatan: skor CV Wav2Vec2-BERT optimistis (epoch dipilih pada fold validasi yang sama); skor uji adalah angka utama.
   Ablasi augmentasi belum dikerjakan.
+
+## 2026-11-23/24 — v6: patch eksperimen lanjutan, XGBoost grid diperluas selesai
+
+- CLAUDE.md v6 dan `eksperimen_tambahan.patch` diterapkan (commit 03a0b29): `freeze_backbone` + tes, `configs/xgb_mfcc_ext.yaml`,
+  `configs/w2v_bert_frozen.yaml`, `src/ta/analysis.py`, hasil analisis awal di `reports/analysis/`. 32 tes lulus.
+- Smoke lolos: `20261123-183731_xgb_mfcc_ext_all_smoke`, `20261123-183928_w2v_bert_frozen_S1_smoke`.
+- Dua run XGBoost ext dihentikan user di tengah jalan (tidak bisa di-resume): `*_xgb_mfcc_ext_all_aborted`, tidak dipakai, tidak di-commit.
+- **XGBoost grid diperluas** `runs/20261123-234403_xgb_mfcc_ext_all` (27 sel x 5 fold, seed 42; uji seed 42/43/44, hiperparameter sama):
+  - Sel terpilih (rata-rata macro-F1 CV): S1 (600, 8, 0,05) CV 0,6878; S3 (600, 8, 0,05) CV 0,6626; T2 (1000, 8, 0,05) CV 0,7105.
+  - Uji macro-F1 seed 42/43/44: S1 0,6949 / 0,6853 / 0,6955; S3 0,6783 / 0,6774 / 0,6777; T2 0,6639 / 0,6658 / 0,6651.
+  - **Masih di tepi grid:** max_depth = 8 (nilai terbesar) untuk ketiga sifat, dan T2 juga n_estimators = 1000 (terbesar).
+    Dicatat sebagai keterbatasan; grid tidak diperluas lagi (CLAUDE.md 10.2). Selisih ke sel terbaik kedua sangat kecil (≤ 0,0005).
+  - Baris ditambahkan ke `reports/results.csv` dengan label model `xgb`/`mfcc` yang sama dengan baseline lama; `ta.evaluate --improvement`
+    memilih run terakhir per (sifat, model, fitur), jadi **jangan jalankan ulang tanpa memisahkan label** (belum dijalankan ulang).
