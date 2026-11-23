@@ -106,6 +106,19 @@ def run_task(task, cfg, index, X, run_dir, smoke, run_id):
     for name, tab in zip(("by_item", "by_harakat", "by_item_harakat_kategori"), error_tables(pred)):
         tab.round(4).to_csv(run_dir / f"{task}_errors_test_{name}.csv", index=False)
 
+    # seed tambahan untuk uji akhir (config test_seeds): hiperparameter sama, hanya seed model yang berbeda.
+    # Seed pertama (cfg seed) sudah dikerjakan di atas; hasil gabungan semua seed ada di *_predictions_test_seeds.csv.
+    extra = [sd for sd in cfg.get("test_seeds", []) if sd != seed]
+    if extra:
+        seed_preds = [pred.assign(seed=seed)]
+        for sd in extra:
+            yp_s, sc_s = fit_predict(kind, best, sd, X, y, tr, te)
+            ps = make_pred(index, te, y, yp_s, sc_s).assign(seed=sd)
+            seed_preds.append(ps)
+            rows += [{**r, "seed": sd} for r in result_rows(task, cfg, "test", 0, subset_metrics(ps), run_id)]
+        pd.concat(seed_preds).to_csv(run_dir / f"{task}_predictions_test_seeds.csv", index=False)
+        print(f"[{task}] uji akhir seed tambahan {extra} selesai")
+
     # baseline kelas mayoritas (cek kewajaran)
     dummy = DummyClassifier(strategy="most_frequent").fit(X[tr], y[tr])
     dm = compute_metrics(y[te], dummy.predict(X[te]))

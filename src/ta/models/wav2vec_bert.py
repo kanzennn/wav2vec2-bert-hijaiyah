@@ -29,18 +29,36 @@ def load_backbone(checkpoint=DEFAULT_CHECKPOINT, random_init_config=None):
 
 class W2VBertClassifier(nn.Module):
     def __init__(self, checkpoint=DEFAULT_CHECKPOINT, dropout=0.1, gradient_checkpointing=True, n_classes=2,
-                 random_init_config=None):
+                 random_init_config=None, freeze_backbone=False):
         super().__init__()
+        self.freeze_backbone = freeze_backbone
         self.backbone = load_backbone(checkpoint, random_init_config)
+        if freeze_backbone:
+            # pembanding encoder beku + probe linear: hanya kepala yang dilatih
+            gradient_checkpointing = False
+            for p in self.backbone.parameters():
+                p.requires_grad = False
         if gradient_checkpointing:
             self.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         self.head = nn.Sequential(nn.Dropout(dropout), nn.Linear(self.backbone.config.hidden_size, n_classes))
 
     def forward(self, x, mask):
         """x: input_features [B, T, 160] dari feature extractor, mask: attention mask [B, T]."""
-        h = self.backbone(input_features=x, attention_mask=mask).last_hidden_state
+        if self.freeze_backbone:
+            with torch.no_grad():
+                h = self.backbone(input_features=x, attention_mask=mask).last_hidden_state
+        else:
+            h = self.backbone(input_features=x, attention_mask=mask).last_hidden_state
         return self.head(masked_mean(h, mask))
 
+    def train(self, mode=True):
+        super().train(mode)
+        if self.freeze_backbone:
+            self.backbone.eval()   # dropout backbone mati; encoder dipakai sebagai ekstraktor tetap
+        return self
+
     def param_groups(self, tc):
+        if self.freeze_backbone:
+            return [{"params": self.head.parameters(), "lr": tc["lr"]}]
         return [{"params": self.backbone.parameters(), "lr": tc["backbone_lr"]},
                 {"params": self.head.parameters(), "lr": tc["lr"]}]

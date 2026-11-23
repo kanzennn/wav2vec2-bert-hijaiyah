@@ -58,3 +58,20 @@ def test_extractor_normalizes_per_utterance_and_pads():
     alone = fe([short], sampling_rate=16000, padding="max_length", max_length=188, truncation=True,
                return_attention_mask=True, return_tensors="np")
     assert np.allclose(alone["input_features"][0], out["input_features"][0])
+
+
+def test_frozen_backbone_trains_only_head():
+    """Pembanding encoder beku: backbone tidak punya gradien dan tetap eval; hanya kepala yang diperbarui."""
+    torch.manual_seed(0)
+    m = W2VBertClassifier(random_init_config=TINY, freeze_backbone=True)
+    m.train()
+    assert not m.backbone.training
+    assert all(not p.requires_grad for p in m.backbone.parameters())
+    groups = m.param_groups({"lr": 1e-3, "backbone_lr": 2e-5})
+    assert len(groups) == 1
+    before = [p.detach().clone() for p in m.backbone.parameters()]
+    x, mask = torch.randn(2, 20, 160), torch.ones(2, 20, dtype=torch.long)
+    m(x, mask).sum().backward()
+    assert all(p.grad is None for p in m.backbone.parameters())
+    assert all(p.grad is not None for p in m.head.parameters())
+    assert all(torch.equal(a, b) for a, b in zip(before, m.backbone.parameters()))

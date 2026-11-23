@@ -1,0 +1,51 @@
+# PEMBANDING encoder beku + probe linear: checkpoint sama (facebook/w2v-bert-2.0, revisi da985ba), backbone dibekukan,
+# hanya kepala linear yang dilatih. Memisahkan efek pretraining dari efek fine-tune. Per sifat, 3 seed.
+# Masukan: fbank dari feature extractor bawaan checkpoint. Tanpa augmentasi (ablasi augmentasi menyusul).
+# Hiperparameter = rencana awal (belum di-tuning); jumlah epoch akhir dipilih dari early stopping di CV.
+name: w2v_bert_frozen
+seed: 42               # dipakai untuk subset --smoke
+seeds: [42, 43, 44]
+cv_seeds: [42]        # protokol C (2026-11-09): CV hanya seed 42 demi waktu; uji akhir tetap 3 seed
+ligo_seeds: [42]      # LIGO hanya seed 42
+n_jobs: 8
+
+preprocess:            # sama untuk semua model
+  sr: 16000
+  trim_top_db: 40.0
+  frame_ms: 25.0
+  hop_ms: 10.0
+  margin_ms: 50.0
+  peak: 0.95
+target_seconds: 1.9    # p99 durasi setelah trim di data latih = 1,870 s (reports/data_audit.md)
+
+features:
+  type: w2v_bert_fbank
+  min_seconds: 0.1     # rekaman lebih pendek di-pad nol sampai 0,1 s sebelum fbank (sama dengan MFCC)
+
+model:
+  type: w2v_bert
+  checkpoint: pretrained/facebook-w2v-bert-2.0
+  params:
+    dropout: 0.1
+    gradient_checkpointing: false
+    freeze_backbone: true
+
+train:
+  batch_size: 8
+  grad_accum: 4        # batch efektif 32
+  lr: 0.001            # kepala klasifikasi
+  backbone_lr: 0.00002 # seluruh lapisan Wav2Vec2-BERT
+  weight_decay: 0.01
+  optimizer: adamw8bit # AdamW 8-bit (bitsandbytes) supaya muat di GPU 8 GB
+  max_grad_norm: 1.0
+  amp_dtype: bf16
+  max_epochs: 10       # probe linear konvergen lebih lambat; ditetapkan sebelum dijalankan
+  patience: 3          # early stopping di macro-F1 fold validasi
+  eval_batch: 32
+  checkpoint: true     # checkpoint per epoch untuk --resume
+
+augmentation: none
+
+smoke:
+  fraction: 0.1
+  max_epochs: 2

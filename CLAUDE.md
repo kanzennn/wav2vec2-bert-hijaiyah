@@ -1,10 +1,10 @@
-# CLAUDE.md — TA: Klasifikasi Sifat Huruf Hijaiyah (versi 5, berdiri sendiri)
+# CLAUDE.md — TA: Klasifikasi Sifat Huruf Hijaiyah (versi 6, berdiri sendiri)
 
 Panduan untuk Claude Code di repo ini. Baca seluruhnya sebelum mengubah kode. Dokumen ini menggantikan semua versi CLAUDE.md sebelumnya; abaikan instruksi lama jika ada di riwayat atau berkas lain. Pemilik: Faiz Elfahad Kurniawan (Informatika, Telkom University). Balas dan beri komentar penjelasan dalam Bahasa Indonesia informal; nama variabel, fungsi, dan commit message dalam bahasa Inggris.
 
 ## 0. Konteks dan hal yang berubah
 
-TA ini berjudul **"Peningkatan Klasifikasi Sifat Huruf Hijaiyah Menggunakan Wav2Vec2-BERT"**. TA ini mengukur seberapa besar **peningkatan** kinerja **klasifikasi sifat huruf (sifat al-huruf) hijaiyah** dari rekaman pelafalan pendek ketika memakai model pretrained Wav2Vec2-BERT yang di-fine-tune dibandingkan baseline XGBoost dengan fitur MFCC. Hanya **dua model** yang dipakai; cakupan sudah sengaja dikecilkan atas arahan dosen pembimbing. Jangan menambah model lain (SVM, Random Forest, CNN, CRNN, wav2vec 2.0 beku) tanpa persetujuan user. Repo ini mungkin masih berisi hasil lama dari konsep **identifikasi huruf (36 kelas item)**. Konsep itu sudah ditinggalkan:
+TA ini berjudul **"Peningkatan Klasifikasi Sifat Huruf Hijaiyah Menggunakan Wav2Vec2-BERT"**. TA ini mengukur seberapa besar **peningkatan** kinerja **klasifikasi sifat huruf (sifat al-huruf) hijaiyah** dari rekaman pelafalan pendek ketika memakai model pretrained Wav2Vec2-BERT yang di-fine-tune dibandingkan baseline XGBoost dengan fitur MFCC. Hanya **dua model** yang dipakai; cakupan sudah sengaja dikecilkan atas arahan dosen pembimbing. Jangan menambah model lain (SVM, Random Forest, CNN, CRNN, wav2vec 2.0 beku) tanpa persetujuan user. Pengecualian yang sudah disetujui (v6, lihat bagian 10): pembanding **Wav2Vec2-BERT beku + probe linear** (checkpoint yang sama) dan **XGBoost dengan grid diperluas + 3 seed**. Repo ini mungkin masih berisi hasil lama dari konsep **identifikasi huruf (36 kelas item)**. Konsep itu sudah ditinggalkan:
 
 - Label target sekarang adalah **sifat huruf** (biner), bukan nomor item.
 - Yang dipakai adalah **Data Benar dan Data Salah**, karena kontras benar-salah itulah yang membuat sifat dapat diklasifikasi.
@@ -188,3 +188,42 @@ runs/archive_letter_id/
 - Alasan memilih Wav2Vec2-BERT: pada shared task Iqra'Eval 2025 (penilaian pelafalan Al-Qur'an), sistem terbaik memakai Wav2Vec2-BERT (F1 0,4726) dan XLS-R-1B (0,4650). Itu tugas deteksi salah lafal pada ayat, bukan klasifikasi sifat huruf, jadi ini argumen pemilihan, bukan jaminan hasil. Wav2Vec2-BERT belum pernah diuji pada klasifikasi sifat huruf hijaiyah menurut kajian pustaka yang ada.
 - Jangan melaporkan peningkatan terhadap angka penelitian lain; hanya terhadap XGBoost yang dilatih ulang pada split yang sama.
 - Karena label ditentukan per item, kemampuan generalisasi ke item baru harus dibuktikan lewat leave-item-group-out; sebutkan sebagai keterbatasan bila skornya jauh lebih rendah dari skor utama.
+
+## 10. Eksperimen lanjutan (v6) — kerjakan sesuai urutan
+
+Tujuan: menjalankan eksperimen yang sudah dijanjikan proposal (subbab 3.4.5, 3.5, 3.6) tetapi belum punya hasil di `runs/`. Semua hasilnya **eksploratif**, karena data uji sudah pernah dilihat (proposal subbab 3.1); jangan menulis "signifikan" atau menyebutnya konfirmatori. Jangan mengubah split, seed uji (42, 43, 44), ambang 0,5, atau preprocessing. Jangan membuka atau menyetel hiperparameter memakai data uji.
+
+### 10.1 Persiapan
+1. Cek apakah `src/ta/analysis.py`, `configs/xgb_mfcc_ext.yaml`, dan `configs/w2v_bert_frozen.yaml` sudah ada. Bila belum, minta user menaruh `eksperimen_tambahan.patch` di root repo, lalu jalankan `git apply --check eksperimen_tambahan.patch` dan `git apply eksperimen_tambahan.patch`. Bila gagal diterapkan, berhenti dan tanya user.
+2. Jalankan `PYTHONPATH=src pytest -p no:cacheprovider`. Tes baru `test_frozen_backbone_trains_only_head` (tests/test_dl.py) harus lulus; bila ada tes lain yang gagal, perbaiki atau laporkan sebelum training.
+3. Pastikan data (bagian 2) dan cache fitur ada. Jangan mengunduh data atau model dari internet.
+
+### 10.2 Eksperimen 1: XGBoost grid diperluas + 3 seed uji (CPU)
+- Perintah: `python -m ta.train --config configs/xgb_mfcc_ext.yaml --smoke` dulu, baru `--task all`.
+- Grid: n_estimators {300, 600, 1000} × max_depth {4, 6, 8} × learning_rate {0,03; 0,05; 0,1}; subsample dan colsample_bytree tetap 0,8. Pemilihan sel grid memakai rata-rata macro-F1 CV (seed 42), tanpa menyentuh data uji.
+- Uji akhir 3 seed (42, 43, 44) memakai hiperparameter terpilih yang sama; keluaran `*_predictions_test_seeds.csv`.
+- Periksa dan laporkan apakah sel terpilih masih berada di tepi grid yang baru. Bila ya, catat sebagai keterbatasan; jangan memperluas grid lagi tanpa bertanya.
+
+### 10.3 Eksperimen 2: Wav2Vec2-BERT beku + probe linear (GPU)
+- Perintah: `python -m ta.train --config configs/w2v_bert_frozen.yaml --smoke` dulu, baru `--task all`.
+- Checkpoint sama persis dengan model utama (`facebook/w2v-bert-2.0`, revisi da985ba). Backbone beku dan berada di mode eval; hanya kepala linear yang dilatih (lr 1e-3, max 10 epoch, patience 3, ditetapkan sebelum dijalankan). Jangan mengubah angka ini setelah melihat hasil.
+- Seed uji akhir 42, 43, 44; CV dan LIGO seed 42, sama dengan model utama. Bila GPU kehabisan memori, turunkan `batch_size` dan naikkan `grad_accum` agar batch efektif tetap 32; catat di `reports/CHANGELOG.md`.
+- Run bisa dilanjutkan dengan `--resume` seperti model utama.
+
+### 10.4 Analisis statistik (setelah 10.2 dan 10.3 selesai)
+- Jalankan: `PYTHONPATH=src python -m ta.analysis --xgb runs/20261102-004931_xgb_mfcc_all --w2v runs/20261109-100209_w2v_bert_all --frozen <RUN_BEKU> --xgb-seeds <RUN_XGB_EXT> --out reports/analysis`.
+- Keluaran: `metrik_uji_dan_acuan.csv`, `delta_ci_permutasi.csv`, `ligo_per_kategori.csv`, `galat_per_item.csv`, ditambah `reports/analysis/README.md` (perbarui angkanya dari hasil terbaru, tulis apa adanya).
+- Metode (tetap, jangan diganti): unit analisis responden (4 Benar + 4 Salah); bootstrap klaster bertingkat per kategori B = 10.000, CI persentil 95%; uji permutasi tanda eksak pada selisih macro-F1 per responden (dua sisi, p terkecil 2/256); koreksi Holm atas tiga sifat; CI diperlakukan terlalu sempit karena hanya 8 klaster.
+- Hasil awal (XGBoost 1 seed vs w2v-BERT 3 seed) ada di `reports/analysis/` dan harus dibaca ulang setelah XGBoost 3 seed tersedia; angka lama diganti, bukan ditambah.
+
+### 10.5 Sensitivitas dan hal yang perlu dicatat
+- Ke-26 berkas `-error` semuanya di data latih (benar-15), bukan di data uji, jadi analisis pasca-hoc di data uji tidak berubah. Untuk sensitivitas yang sebenarnya, latih ulang XGBoost (mudah, CPU) tanpa 26 berkas itu dengan config terpisah, lalu laporkan selisihnya. Jangan melatih ulang w2v-BERT untuk ini tanpa bertanya.
+- Sensitivitas tanpa salinan identik (md5) di dalam folder responden sudah dihitung oleh `ta.analysis`.
+- Galat per item: peringkat "item paling sering salah" hanya boleh dilaporkan untuk item yang kolom `ci_terpisah_dari_peringkat_6` bernilai True. Pada hasil awal tidak ada item yang memenuhi.
+
+### 10.6 Aturan pelaporan
+- Semua angka berasal dari `runs/` atau `reports/analysis/`; jangan mengarang atau membulatkan sendiri di luar tabel.
+- Tambahkan baris ke `reports/results.csv` untuk run baru dan catat tiap run di `reports/CHANGELOG.md` (tanggal, config, commit, hasil, kendala).
+- Eksperimen yang gagal atau tidak sempat dijalankan ditulis apa adanya; jangan diganti dengan perkiraan.
+- Setelah selesai, tulis ringkasan satu halaman: Δ macro-F1 per sifat (w2v-BERT vs XGBoost 3 seed, w2v-BERT vs encoder beku) dengan CI dan p Holm, LIGO per kategori, dan keterbatasan. Tandai semuanya eksploratif.
+- Commit kecil dengan pesan bahasa Inggris. Jangan commit data mentah, checkpoint, atau berkas > 50 MB.

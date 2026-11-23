@@ -1,0 +1,10 @@
+variasi,sifat,model,pembanding,macroF1_model,macroF1_pembanding,delta,ci95_lo,ci95_hi,ci_mencakup_nol,p_permutasi,n_responden,n_rekaman,p_holm
+utama,S1,w2v_bert,xgb,0.7886,0.6885,0.1001,-0.0484,0.2388,True,0.1562,8,4311,0.1562
+utama,S3,w2v_bert,xgb,0.7615,0.6678,0.0937,0.0435,0.1472,False,0.0156,8,4311,0.0469
+utama,T2,w2v_bert,xgb,0.7776,0.662,0.1157,0.0045,0.2175,False,0.0625,8,4311,0.125
+tanpa_berkas_error,S1,w2v_bert,xgb,0.7886,0.6885,0.1001,-0.0484,0.2388,True,0.1562,8,4311,0.1562
+tanpa_berkas_error,S3,w2v_bert,xgb,0.7615,0.6678,0.0937,0.0435,0.1472,False,0.0156,8,4311,0.0469
+tanpa_berkas_error,T2,w2v_bert,xgb,0.7776,0.662,0.1157,0.0045,0.2175,False,0.0625,8,4311,0.125
+tanpa_salinan_identik,S1,w2v_bert,xgb,0.7854,0.6816,0.1038,-0.0471,0.2427,True,0.1562,8,4197,0.1562
+tanpa_salinan_identik,S3,w2v_bert,xgb,0.7573,0.6616,0.0957,0.047,0.1493,False,0.0156,8,4197,0.0469
+tanpa_salinan_identik,T2,w2v_bert,xgb,0.7738,0.6562,0.1176,0.0057,0.2246,False,0.0625,8,4197,0.125
