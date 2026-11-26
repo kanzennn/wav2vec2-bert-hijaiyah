@@ -4,16 +4,27 @@ Panduan singkat untuk teman yang membantu training. Aturan lengkapnya ada di `CL
 
 Untuk melanjutkan run Wav2Vec2-BERT beku yang sedang berjalan, cara termudah adalah notebook `notebooks/lanjut_training_laptop_lain.ipynb`. Notebook itu menjalankan langkah-langkah di bawah secara berurutan.
 
+## 0. Alur kerja pemilik ↔ teman
+
+| Arah | Lewat | Isi |
+|---|---|---|
+| Aturan dan kode: pemilik → teman | GitHub (`git clone` / `git pull`) | `CLAUDE.md`, `configs/`, `src/`, `tests/`, notebook. **Hanya pemilik yang mengubah dan commit.** Teman tidak mengedit apa pun di repo. |
+| Bahan training: pemilik → teman | Drive `Training Model/01_bahan_training/` | model pretrained, cache `interim/`, folder run yang mau dilanjutkan. Teman hanya mengunduh. |
+| Hasil: teman → pemilik | Drive `Training Model/02_hasil_dari_teman/` | `<run_id>_hasil_<tanggal>.zip` (folder run tanpa checkpoint, log, info mesin) |
+| Serah terima di tengah jalan: teman → pemilik | Drive `Training Model/02_hasil_dari_teman/checkpoint_serah_terima/` | berkas `*.pt` dari unit yang belum selesai; hanya kalau training harus dilanjutkan di laptop pemilik |
+
+Hanya **satu laptop** yang boleh menjalankan satu run dalam satu waktu. Setelah teman mengirim checkpoint serah terima, teman berhenti, dan baru pemilik yang melanjutkan (begitu juga sebaliknya).
+
 ## 1. Yang perlu dibawa
 
 | Barang | Cara | Catatan |
 |---|---|---|
 | Kode | `git clone https://github.com/kanzennn/wav2vec2-bert-hijaiyah.git` | lewat git supaya commit hash tercatat di run; jangan salin folder `src/` secara manual |
 | `data/labels/`, `data/splits/` | sudah ada di repo | jangan diubah |
-| Model `pretrained/facebook-w2v-bert-2.0/` | salin dari laptop pemilik (Google Drive folder "Training Model") | revisi `da985ba`; **jangan unduh ulang dari Hugging Face**, supaya versinya pasti sama |
-| Cache `data/interim/` (`trim16k_35ecb48e72/`, `features/w2vbert_fbank_27f82ee0d4/`) | salin dari Drive | opsional, tapi menghemat waktu dan membuat data mentah tidak perlu |
+| Model `pretrained/facebook-w2v-bert-2.0/` | Drive `Training Model/01_bahan_training/pretrained/` | revisi `da985ba`; **jangan unduh ulang dari Hugging Face**, supaya versinya pasti sama |
+| Cache `data/interim/` (`trim16k_35ecb48e72/`, `features/w2vbert_fbank_27f82ee0d4/`) | Drive `Training Model/01_bahan_training/interim/` | opsional, tapi menghemat waktu dan membuat data mentah tidak perlu |
 | Data mentah | zip dataset → `data/raw/Data Benar/`, `data/raw/Data Salah/` | hanya bila cache `data/interim/` tidak dibawa |
-| Folder run yang mau dilanjutkan | `runs/<run_id>/` | hanya untuk `--resume` |
+| Folder run yang mau dilanjutkan | Drive `Training Model/01_bahan_training/<run_id>/` → `runs/<run_id>/` | hanya untuk `--resume` |
 
 Google Drive **hanya untuk transfer**. Salin semuanya ke SSD lokal (misalnya `D:\tugas-akhir`); **jangan jalankan training dari folder Google Drive yang sedang sync**, karena berkas besar yang sedang di-sync bisa rusak atau terkunci.
 
@@ -60,7 +71,9 @@ Selama training:
 
 ## 4. Membawa hasil pulang
 
-- Kirim `runs/<run_id>/` **tanpa** `checkpoints/` (ukurannya beberapa MB). `checkpoints/` berisi berkas sekitar 2,3 GB dan hanya berguna kalau run belum selesai.
+- **Teman:** buat zip `runs/<run_id>/` **tanpa** `checkpoints/` (beberapa MB), ditambah log training. Sel 8 notebook membuat zip ini dengan nama `<run_id>_hasil_<tanggal>.zip`. Upload zip itu ke Drive `Training Model/02_hasil_dari_teman/` tanpa mengganti namanya.
+- **Kalau run belum selesai** dan harus dilanjutkan di laptop pemilik: sel 9 mengumpulkan `checkpoints/*.pt` (sekitar 2,3 GB per berkas). Upload berkas-berkas itu ke `02_hasil_dari_teman/checkpoint_serah_terima/`. Pemilik menaruhnya di `runs/<run_id>/checkpoints/`, lalu menjalankan `--resume`.
+- **Pemilik:** ekstrak zip ke `runs/`. Unit yang sudah ada tidak berubah karena isinya sama; unit baru ikut masuk.
 - **Jangan menimpa `reports/results.csv` milik pemilik.** Baris hasil run ada di `runs/<run_id>/results_rows.csv`; pemilik menggabungkannya dengan:
 
 ```powershell

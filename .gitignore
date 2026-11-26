@@ -21,3 +21,6 @@ pretrained/
 
 # run yang dihentikan di tengah jalan (tidak lengkap)
 runs/**/*_aborted/
+
+# checkpoint serah terima antar laptop (jangan di-commit)
+serah_terima/
