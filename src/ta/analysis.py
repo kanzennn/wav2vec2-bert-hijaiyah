@@ -73,6 +73,12 @@ def load_meta():
     return m.set_index("source_id")
 
 
+def load_letters():
+    """no_huruf -> huruf Arab dari label_per_huruf.csv (untuk tabel galat per huruf)."""
+    t = pd.read_csv(ROOT / "data/labels/label_per_huruf.csv", encoding="utf-8-sig")
+    return dict(zip(t.no_huruf.astype(int), t.huruf))
+
+
 def per_resp_counts(df, resp_order):
     """Array [n_resp, 4] hitungan konfusi per responden, urutan mengikuti resp_order."""
     out = np.zeros((len(resp_order), 4))
@@ -226,22 +232,30 @@ def auc_ci(x, rng):
 # ---------- galat per item ----------
 
 def item_errors(task, name, df, rng):
-    """Galat per item; CI bootstrap klaster responden (bertingkat per kategori)."""
+    """Galat per huruf induk (28 huruf); CI bootstrap klaster responden (bertingkat per kategori).
+
+    Unit = `huruf_no` (proposal v16, CLAUDE.md v7 E5): varian digabung ke huruf induknya
+    (2t->2, 5t->5, 8t->8, 16t->16, 21t->21, 26t->26, 25i/25ie/25ik->25). Label varian identik dengan induknya.
+    """
     resp = sorted(df.responden.unique())
     strata = [r.split("-")[0] for r in resp]
-    items = sorted(df.item.unique())
+    items = sorted(df.huruf_no.unique())
     E = np.zeros((len(resp), len(items)))
     N = np.zeros_like(E)
     for i, r in enumerate(resp):
         d = df[df.responden == r]
         for j, it in enumerate(items):
-            di = d[d.item == it]
+            di = d[d.huruf_no == it]
             E[i, j], N[i, j] = (di.y_true != di.y_pred).sum(), len(di)
+    members = df.groupby("huruf_no").item.agg(lambda s: "+".join(sorted(set(map(str, s)), key=lambda x: (len(x), x))))
     idx = strata_sample(rng, resp, strata, B_ITEM)
     be, bn = E[idx].sum(1), N[idx].sum(1)
     rate = np.where(bn > 0, be / np.where(bn > 0, bn, 1), np.nan)
     lo, hi = np.nanpercentile(rate, 2.5, axis=0), np.nanpercentile(rate, 97.5, axis=0)
-    t = pd.DataFrame({"sifat": task, "model": name, "item": items, "n": N.sum(0).astype(int),
+    huruf = load_letters()
+    t = pd.DataFrame({"sifat": task, "model": name, "huruf_no": items,
+                      "huruf": [huruf.get(int(h), "") for h in items],
+                      "item_tergabung": [members[h] for h in items], "n": N.sum(0).astype(int),
                       "galat": E.sum(0) / N.sum(0), "ci95_lo": lo, "ci95_hi": hi})
     t = t.sort_values("galat", ascending=False).reset_index(drop=True)
     t["peringkat"] = np.arange(1, len(t) + 1)

@@ -13,7 +13,8 @@ Perintah:
 | `metrik_uji_dan_acuan.csv` | macro-F1, balanced accuracy, akurasi per model/sifat/kategori + aturan acuan "kategori saja" dan "item+harakat saja" |
 | `delta_ci_permutasi.csv` | Δ macro-F1 (w2v-BERT − XGBoost), CI 95% bootstrap klaster (B=10.000), p permutasi tanda eksak, p Holm; varian sensitivitas |
 | `ligo_per_kategori.csv` | LIGO per kategori (Benar/Salah/semua) dan per lipatan; AUC pooled dengan CI klaster |
-| `galat_per_item.csv` | galat per item dengan CI bootstrap responden; kolom `ci_terpisah_dari_peringkat_6` menandai peringkat yang boleh diklaim |
+| `galat_per_item.csv` | galat per **huruf induk (28 huruf, kolom `huruf_no`)** dengan CI bootstrap responden; varian digabung ke induknya (kolom `item_tergabung`, mis. `2+2t`, `25i+25ie+25ik`); kolom `ci_terpisah_dari_peringkat_6` menandai peringkat yang boleh diklaim |
+| `archive_36item/` | keluaran lama per 36 item; **jangan dikutip** (proposal v16 memakai 28 huruf) |
 
 ## Hasil utama (data uji, w2v-BERT = rata-rata 3 seed, XGBoost = seed 42)
 
@@ -34,8 +35,9 @@ Perintah:
 - Sensitivitas tanpa berkas `-error`: **identik dengan hasil utama karena ke-26 berkas itu semuanya di data latih
   (benar-15), tidak ada di data uji.** Analisis ini baru bermakna bila model dilatih ulang tanpa berkas tersebut.
 - Sensitivitas tanpa salinan identik di dalam folder (114 rekaman uji dibuang, n=4.197): Δ berubah ≤ 0,004; kesimpulan sama.
-- Galat per item: tidak ada item yang CI-nya terpisah dari peringkat ke-6, jadi proposal tidak boleh mengklaim "lima item
-  tersulit" sebagai peringkat pasti.
+- Galat per huruf induk (28 huruf, dihitung ulang 2026-11-26 dari run yang sama; XGBoost seed 42, w2v-BERT seed 42): tidak ada
+  huruf yang CI-nya terpisah dari peringkat ke-6 untuk sifat dan model mana pun, jadi proposal tidak boleh mengklaim
+  "lima huruf tersulit" sebagai peringkat pasti. Tabel 36 item lama dipindah ke `archive_36item/`.
 - Catatan: XGBoost baru satu seed; Δ membandingkan rata-rata 3 seed w2v-BERT dengan 1 run XGBoost sampai eksperimen 1
   di bawah dijalankan.
 
