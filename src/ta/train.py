@@ -30,7 +30,7 @@ from ta.evaluate import (append_results, compute_metrics, confusion, error_table
 from ta.features import load_features
 from ta.models.xgboost_model import decision_scores, expand_grid, make_model
 from ta.paths import ROOT, RUNS_DIR
-from ta.utils import detect_device, git_info, set_seed
+from ta.utils import detect_device, git_info, machine_info, set_seed
 
 DEEP_MODELS = ("w2v_bert",)
 PRED_COLUMNS = ["source_id", "category", "is_correct", "responden", "item", "huruf_no", "sub", "rep", "split", "fold"]
@@ -185,11 +185,12 @@ def main():
     args = ap.parse_args()
 
     git = git_info()
+    machine = machine_info()
     if args.resume:
         run_dir, saved, cfg = load_resume(args)
         args.task, args.smoke = saved["task"], saved["smoke"]
         run_id = run_dir.name
-        resumes = saved.get("resumes", []) + [{"time": f"{datetime.now():%Y%m%d-%H%M%S}", "git": git}]
+        resumes = saved.get("resumes", []) + [{"time": f"{datetime.now():%Y%m%d-%H%M%S}", "git": git, "machine": machine}]
         (run_dir / "run_args.json").write_text(json.dumps({**saved, "resumes": resumes}, indent=2), encoding="utf-8")
         git = saved["git"]
         print(f"lanjut {run_id}; git saat ini {resumes[-1]['git']['commit'][:8]}")
@@ -202,7 +203,7 @@ def main():
         run_dir = RUNS_DIR / run_id
         run_dir.mkdir(parents=True)
         shutil.copy(args.config, run_dir / "config.yaml")
-        (run_dir / "run_args.json").write_text(json.dumps({"task": args.task, "smoke": args.smoke, "git": git}, indent=2),
+        (run_dir / "run_args.json").write_text(json.dumps({"task": args.task, "smoke": args.smoke, "git": git, "machine": machine}, indent=2),
                                                encoding="utf-8")
     set_seed(cfg["seed"])
     tasks = list(TASKS) if args.task == "all" else [args.task]
@@ -236,7 +237,7 @@ def main():
 
     pd.DataFrame(all_rows).to_csv(run_dir / "results_rows.csv", index=False)
     meta = {"run_id": run_id, "config": cfg, "git": git, "smoke": args.smoke, "n_recordings": len(index),
-            "feature_names": names, "device": detect_device(), "summaries": summaries}
+            "feature_names": names, "device": detect_device(), "machine": machine, "summaries": summaries}
     (run_dir / "metrics.json").write_text(json.dumps(meta, indent=2, default=float), encoding="utf-8")
     if not args.smoke:
         append_results(all_rows)

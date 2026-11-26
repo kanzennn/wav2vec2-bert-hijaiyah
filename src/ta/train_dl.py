@@ -31,7 +31,7 @@ from torch import nn
 from ta.data.labels import get_labels
 from ta.data.split import cv_folds, ligo_folds, train_test_indices
 from ta.evaluate import compute_metrics, confusion, error_tables, plot_confusion, subset_metrics
-from ta.utils import set_seed
+from ta.utils import machine_info, set_seed
 
 DEFAULT_TRAIN = dict(batch_size=8, grad_accum=4, lr=1e-3, backbone_lr=2e-5, weight_decay=0.01, optimizer="adamw8bit",
                      max_grad_norm=1.0, amp_dtype="bf16", max_epochs=10, patience=3, eval_batch=32, checkpoint=True)
@@ -234,6 +234,8 @@ def run_unit(run_dir, key, fit):
         ckpts.mkdir(exist_ok=True)
         ckpt = ckpts / f"{key}.pt"
         pred, meta = fit(ckpt)
+        mi = machine_info()   # unit bisa dilatih di laptop berbeda bila run dipindah
+        meta = {**meta, "machine": {k: mi.get(k) for k in ("hostname", "gpu", "gpu_vram_gb", "nvidia_driver", "cuda")}}
         _atomic(pred_p, lambda t: pred.to_csv(t, index=False))
         _atomic(meta_p, lambda t: t.write_text(json.dumps(meta, indent=1, default=float), encoding="utf-8"))
         ckpt.unlink(missing_ok=True)
