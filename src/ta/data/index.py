@@ -49,6 +49,14 @@ def build_index(apply_exclusions: bool = True) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+def keep_without_flag_error(df: pd.DataFrame) -> pd.Series:
+    """Mask baris yang dipertahankan bila 26 berkas `-error` (flag_error) dikeluarkan dari data latih.
+
+    Untuk analisis sensitivitas E2 saja (CLAUDE.md 10.5). Data uji tidak pernah disentuh.
+    """
+    return ~(df["flag_error"].astype(bool) & (df["split"] == "latih"))
+
+
 def cross_check_filenames(df: pd.DataFrame) -> list:
     """Bandingkan hasil parse nama berkas dengan kolom metadata. Mengembalikan daftar ketidakcocokan."""
     bad = []

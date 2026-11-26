@@ -21,7 +21,7 @@ import yaml
 from joblib import Parallel, delayed
 from sklearn.dummy import DummyClassifier
 
-from ta.data.index import build_index
+from ta.data.index import build_index, keep_without_flag_error
 from ta.data.labels import TASKS, get_labels
 from ta.data.preprocess import DEFAULT_PREPROCESS, build_cache
 from ta.data.split import cv_folds, ligo_folds, train_test_indices
@@ -60,13 +60,27 @@ def result_rows(task, cfg, mode, fold, metrics_by_subset, run_id):
     return [{**base, "subset": s, **m} for s, m in metrics_by_subset.items()]
 
 
+def task_grid(cfg, task, smoke=False):
+    """Daftar kombinasi hiperparameter untuk satu sifat.
+
+    `model.params_per_task` (opsional) mengunci satu sel per sifat, misalnya sel terpilih dari run sebelumnya
+    untuk analisis sensitivitas; kalau tidak ada, pakai `model.grid` seperti biasa.
+    """
+    fixed = cfg["model"].get("fixed", {})
+    per_task = cfg["model"].get("params_per_task")
+    if per_task:
+        grid = [{**fixed, **per_task[task]}]
+    else:
+        grid = [{**fixed, **g} for g in expand_grid(cfg["model"]["grid"])]
+    if smoke:
+        grid = grid[: cfg.get("smoke", {}).get("max_grid", 1)]
+    return grid
+
+
 def run_task(task, cfg, index, X, run_dir, smoke, run_id):
     kind, seed, n_jobs = cfg["model"]["type"], cfg["seed"], cfg.get("n_jobs", 4)
     y = get_labels(task, index)
-    fixed = cfg["model"].get("fixed", {})
-    grid = [{**fixed, **g} for g in expand_grid(cfg["model"]["grid"])]
-    if smoke:
-        grid = grid[: cfg.get("smoke", {}).get("max_grid", 1)]
+    grid = task_grid(cfg, task, smoke)
     folds = list(cv_folds(index))
 
     # 1. validasi silang untuk memilih hiperparameter
@@ -218,6 +232,13 @@ def main():
         X, names = feats[0], [cfg["features"]["type"]]
     else:
         X, names = load_features(cfg, index)
+    if cfg.get("data", {}).get("exclude_flag_error"):
+        # sensitivitas E2: buang 26 berkas `-error` dari data latih; fitur tetap dari cache lengkap
+        keep = keep_without_flag_error(index).values
+        print(f"exclude_flag_error: {int((~keep).sum())} rekaman latih dikeluarkan")
+        index, X = index[keep].reset_index(drop=True), X[keep]
+        if deep:
+            feats = tuple(f[keep] for f in feats)
     if args.smoke:
         sub = smoke_subset(index, cfg.get("smoke", {}).get("fraction", 0.1), cfg["seed"])
         rows = index.reset_index(drop=True).index[index.source_id.isin(set(sub.source_id))]

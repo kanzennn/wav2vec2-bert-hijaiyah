@@ -1,0 +1,47 @@
+# E2 (CLAUDE.md v7 10.5): sensitivitas tanpa 26 berkas `-error` (flag_error, Data Benar/15, semuanya di data latih).
+# Salinan xgb_mfcc_ext.yaml; hiperparameter dikunci ke sel terpilih E1 (runs/20261123-234403_xgb_mfcc_ext_all),
+# tanpa grid ulang. Data uji tidak berubah. Bandingkan macro-F1 uji dengan E1.
+name: xgb_mfcc_ext_noerror
+seed: 42
+test_seeds: [42, 43, 44]   # uji akhir 3 seed, sama dengan Wav2Vec2-BERT
+n_jobs: 8
+
+data:
+  exclude_flag_error: true   # buang 26 berkas -error dari data latih (CV dan latih akhir)
+
+preprocess:            # sama untuk semua model
+  sr: 16000
+  trim_top_db: 40.0
+  frame_ms: 25.0
+  hop_ms: 10.0
+  margin_ms: 50.0
+  peak: 0.95
+target_seconds: 1.9    # p99 durasi setelah trim di data latih = 1,870 s (reports/data_audit.md)
+
+features:
+  type: mfcc
+  n_mfcc: 13
+  n_fft: 512
+  win_ms: 25.0
+  hop_ms: 10.0
+  n_mels: 40
+  fmin: 20.0
+  fmax: 8000.0
+  delta_width: 9
+  min_seconds: 0.1
+
+model:
+  type: xgb
+  fixed:
+    subsample: 0.8
+    colsample_bytree: 0.8
+  params_per_task:          # sel terpilih E1 (rata-rata macro-F1 CV seed 42)
+    S1: {n_estimators: 600, max_depth: 8, learning_rate: 0.05}
+    S3: {n_estimators: 600, max_depth: 8, learning_rate: 0.05}
+    T2: {n_estimators: 1000, max_depth: 8, learning_rate: 0.05}
+
+augmentation: none
+
+smoke:
+  fraction: 0.1
+  max_grid: 1
